@@ -14,6 +14,7 @@ dist/
 data/db/*.db
 data/db/*.db-journal
 data/db/*.db-wal
+data/db/*.db-shm
 *.sqlite
 *.sqlite3
 
