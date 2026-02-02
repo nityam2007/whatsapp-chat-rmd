@@ -1,0 +1,158 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables
+dotenv.config();
+
+export interface Config {
+  // Server
+  port: number;
+  nodeEnv: string;
+  
+  // Timezone
+  timezone: string;
+  
+  // Orchestrator
+  orchestratorPort: number;
+  orchestratorUrl: string;
+
+  // Database
+  databasePath: string;
+
+  // Vector Store
+  faissIndexPath: string;
+
+  // Redis
+  redisUrl: string;
+
+  // OpenAI
+  openaiApiKey: string;
+  openaiModelSmall: string;
+  openaiModelBig: string;
+  openaiEmbeddingModel: string;
+
+  // Evolution API
+  evolutionApiUrl: string;
+  evolutionApiKey: string;
+
+  // Token Compression
+  tokenThreshold: number;
+
+  // Heuristic Gate
+  heuristicThreshold: number;
+
+  // Pipeline settings
+  minConfidence: number;
+  enableRuleEngine: boolean;
+
+  // Web Push
+  vapidPublicKey: string;
+  vapidPrivateKey: string;
+  vapidEmail: string;
+
+  // Logging
+  logLevel: string;
+
+  // User Container
+  userId: string;
+  containerId: string;
+}
+
+function getEnvVar(key: string, defaultValue?: string): string {
+  const value = process.env[key];
+  if (value === undefined) {
+    if (defaultValue !== undefined) {
+      return defaultValue;
+    }
+    return '';
+  }
+  return value;
+}
+
+function getEnvVarInt(key: string, defaultValue: number): number {
+  const value = process.env[key];
+  if (value === undefined) {
+    return defaultValue;
+  }
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
+export const config: Config = {
+  // Server
+  port: getEnvVarInt('PORT', 3000),
+  nodeEnv: getEnvVar('NODE_ENV', 'development'),
+  
+  // Timezone - default to IST (Asia/Kolkata)
+  timezone: getEnvVar('TIMEZONE', 'Asia/Kolkata'),
+  
+  // Orchestrator
+  orchestratorPort: getEnvVarInt('ORCHESTRATOR_PORT', 4000),
+  orchestratorUrl: getEnvVar('ORCHESTRATOR_URL', 'http://localhost:4000'),
+
+  // Database
+  databasePath: getEnvVar('DATABASE_PATH', path.join(process.cwd(), 'data', 'db', 'events.db')),
+
+  // Vector Store
+  faissIndexPath: getEnvVar('FAISS_INDEX_PATH', path.join(process.cwd(), 'data', 'vectors', 'index')),
+
+  // Redis
+  redisUrl: getEnvVar('REDIS_URL', 'redis://localhost:6379'),
+
+  // OpenAI
+  openaiApiKey: getEnvVar('OPENAI_API_KEY', ''),
+  openaiModelSmall: getEnvVar('OPENAI_MODEL_SMALL', 'gpt-4o-mini'),
+  openaiModelBig: getEnvVar('OPENAI_MODEL_BIG', 'gpt-4o'),
+  openaiEmbeddingModel: getEnvVar('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small'),
+
+  // Evolution API
+  evolutionApiUrl: getEnvVar('EVOLUTION_API_URL', 'http://localhost:8080'),
+  evolutionApiKey: getEnvVar('EVOLUTION_API_KEY', ''),
+
+  // Token Compression
+  tokenThreshold: getEnvVarInt('TOKEN_THRESHOLD', 2000),
+
+  // Heuristic Gate
+  heuristicThreshold: getEnvVarInt('HEURISTIC_THRESHOLD', 1),
+
+  // Pipeline settings
+  minConfidence: parseFloat(getEnvVar('MIN_CONFIDENCE', '0.3')),
+  enableRuleEngine: getEnvVar('ENABLE_RULE_ENGINE', 'true') === 'true',
+
+  // Web Push
+  vapidPublicKey: getEnvVar('VAPID_PUBLIC_KEY', ''),
+  vapidPrivateKey: getEnvVar('VAPID_PRIVATE_KEY', ''),
+  vapidEmail: getEnvVar('VAPID_EMAIL', 'mailto:admin@example.com'),
+
+  // Logging
+  logLevel: getEnvVar('LOG_LEVEL', 'debug'),
+
+  // User Container
+  userId: getEnvVar('USER_ID', ''),
+  containerId: getEnvVar('CONTAINER_ID', ''),
+};
+
+export function validateConfig(): string[] {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!config.openaiApiKey) {
+    warnings.push('OPENAI_API_KEY not set - using fallback implementations');
+  }
+
+  if (!config.redisUrl && config.nodeEnv === 'production') {
+    errors.push('REDIS_URL is required in production');
+  }
+
+  return errors;
+}
+
+export function isProduction(): boolean {
+  return config.nodeEnv === 'production';
+}
+
+export function isDevelopment(): boolean {
+  return config.nodeEnv === 'development';
+}
+
+export default config;

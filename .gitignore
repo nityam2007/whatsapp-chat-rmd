@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files (NEVER commit secrets)
+.env
+.env.*
+.env.local
+.env.production
+
+# Database files
+data/db/*.db
+data/db/*.db-journal
+data/db/*.db-wal
+*.sqlite
+*.sqlite3
+
+# Vector store
+data/vectors/*
+!data/vectors/.gitkeep
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts
+*.tgz
+*.tar.gz
+
+# Credentials (NEVER commit)
+credentials.json
+service-account.json
+*.pem
+*.key
+
+# Evolution API data
+evolution-api/instances/
+evolution-api/store/
+
+# PID files (runtime)
+*.pid
+.pids
+.*_pid

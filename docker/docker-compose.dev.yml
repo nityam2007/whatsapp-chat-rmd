@@ -1,0 +1,52 @@
+# WhatsApp Chat RMD - Development Docker Compose
+# Usage: docker compose -f docker/docker-compose.dev.yml up
+
+name: whatsapp-rmd-dev
+
+services:
+  rmd-dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    container_name: rmd-dev
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_PATH=/app/data/db/events.db
+      - FAISS_INDEX_PATH=/app/data/vectors/index
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL_SMALL=${OPENAI_MODEL_SMALL:-gpt-4o-mini}
+      - OPENAI_MODEL_BIG=${OPENAI_MODEL_BIG:-gpt-4o}
+      - TOKEN_THRESHOLD=${TOKEN_THRESHOLD:-2000}
+      - PATTERN_LEARNING_INTERVAL=${PATTERN_LEARNING_INTERVAL:-3600000}
+      - LOG_LEVEL=debug
+    volumes:
+      - ../src:/app/src:ro
+      - ../data:/app/data
+    networks:
+      - rmd-dev-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/webhook/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis-dev:
+    image: redis:7-alpine
+    container_name: rmd-redis-dev
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-dev-data:/data
+    networks:
+      - rmd-dev-network
+
+volumes:
+  redis-dev-data:
+
+networks:
+  rmd-dev-network:
+    driver: bridge

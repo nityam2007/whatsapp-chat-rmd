@@ -1,0 +1,59 @@
+graph TB
+    subgraph "User's Phone"
+        WA[📱 WhatsApp App]
+    end
+
+    subgraph "WhatsApp Cloud"
+        WAC[☁️ WhatsApp Servers]
+    end
+
+    subgraph "Your Server"
+        subgraph "Evolution API Container"
+            EVO[🔗 Evolution API<br/>Port 8080]
+            BAILEYS[Baileys Library<br/>WhatsApp Web Protocol]
+        end
+
+        subgraph "RMD Service Container"
+            WEBHOOK[🎯 Webhook Handler<br/>POST /webhook/evolution]
+            PIPELINE[🧠 AI Pipeline]
+            DB[(💾 SQLite DB)]
+            VECTOR[(🔍 Vector Store)]
+            SCHEDULER[⏰ Scheduler]
+        end
+
+        subgraph "Push Webapp Container"
+            PUSHAPI[📤 Push API<br/>Port 3002]
+            SW[Service Worker]
+        end
+
+        REDIS[(Redis<br/>Pub/Sub)]
+    end
+
+    subgraph "External Services"
+        OPENAI[🤖 OpenAI API]
+    end
+
+    subgraph "User's Browser"
+        BROWSER[🌐 Browser<br/>Push Notifications]
+    end
+
+    WA <--> WAC
+    WAC <--> BAILEYS
+    BAILEYS --> EVO
+    EVO -->|Webhook POST| WEBHOOK
+    WEBHOOK --> PIPELINE
+    PIPELINE -->|Classify & Extract| OPENAI
+    PIPELINE --> DB
+    PIPELINE --> VECTOR
+    PIPELINE -->|Schedule Reminders| SCHEDULER
+    SCHEDULER -->|Send Notification| PUSHAPI
+    PUSHAPI -->|Web Push| BROWSER
+    
+    EVO <--> REDIS
+    PIPELINE <--> REDIS
+
+    style WA fill:#25D366,color:#fff
+    style EVO fill:#6366f1,color:#fff
+    style PIPELINE fill:#8b5cf6,color:#fff
+    style OPENAI fill:#10a37f,color:#fff
+    style BROWSER fill:#f59e0b,color:#fff

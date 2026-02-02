@@ -1,0 +1,324 @@
+# WhatsApp Chat RMD - Docker Compose
+# v0.5.0 - Production Configuration
+#
+# Usage:
+#   docker compose up -d                    # Core services
+#   docker compose --profile full up -d     # With Evolution API
+#   docker compose --profile monitoring up -d  # With monitoring
+#   docker compose --profile all up -d      # Everything
+
+name: whatsapp-rmd
+
+services:
+  # ===========================================
+  # RMD Service (Main Application)
+  # ===========================================
+  rmd-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: rmd-service
+    restart: unless-stopped
+    ports:
+      - "${RMD_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL_SMALL=${OPENAI_MODEL_SMALL:-gpt-4o-mini}
+      - OPENAI_MODEL_BIG=${OPENAI_MODEL_BIG:-gpt-4o}
+      - TOKEN_THRESHOLD=${TOKEN_THRESHOLD:-2000}
+      - PATTERN_LEARNING_INTERVAL=${PATTERN_LEARNING_INTERVAL:-3600000}
+      - METRICS_LOG_INTERVAL=${METRICS_LOG_INTERVAL:-300000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOKI_URL=http://loki:3100
+      - REDIS_URL=redis://redis:6379
+      - TIMEZONE=Asia/Kolkata
+    volumes:
+      - rmd-data:/app/data
+      - rmd-logs:/app/logs
+    networks:
+      - rmd-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/webhook/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # ===========================================
+  # Push Webapp (Dashboard + Notifications)
+  # ===========================================
+  webapp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.webapp
+    container_name: rmd-webapp
+    restart: unless-stopped
+    ports:
+      - "${WEBAPP_PORT:-3002}:3002"
+    environment:
+      - NODE_ENV=production
+      - WEBAPP_PORT=3002
+      - RMD_API_URL=http://rmd-service:3000
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_EMAIL=${VAPID_EMAIL:-mailto:admin@example.com}
+      - API_SECRET=${API_SECRET:-change-this-secret}
+    volumes:
+      - webapp-data:/app/data
+    depends_on:
+      rmd-service:
+        condition: service_healthy
+    networks:
+      - rmd-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ===========================================
+  # Redis (Caching & Rate Limiting)
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: rmd-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --loglevel warning
+    volumes:
+      - redis-data:/data
+    networks:
+      - rmd-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 192M
+
+  # ===========================================
+  # Loki (Log Aggregation)
+  # ===========================================
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: rmd-loki
+    restart: unless-stopped
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - rmd-network
+    profiles:
+      - monitoring
+      - all
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ===========================================
+  # Promtail (Log Collector)
+  # ===========================================
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: rmd-promtail
+    restart: unless-stopped
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - rmd-logs:/var/log/rmd:ro
+      - evolution-logs:/var/log/evolution:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - rmd-network
+    profiles:
+      - monitoring
+      - all
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
+  # ===========================================
+  # Grafana (Visualization & Dashboards)
+  # ===========================================
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: rmd-grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_EXPLORE_ENABLED=true
+      - GF_ALERTING_ENABLED=true
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - rmd-network
+    profiles:
+      - monitoring
+      - all
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ===========================================
+  # Evolution API (WhatsApp) - Optional
+  # ===========================================
+  evolution-api:
+    image: atendai/evolution-api:v2.1.1
+    container_name: rmd-evolution
+    restart: unless-stopped
+    ports:
+      - "${EVOLUTION_PORT:-8080}:8080"
+    environment:
+      - SERVER_URL=http://localhost:8080
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-your_api_key}
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=http://rmd-service:3000/webhook/evolution
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=true
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://postgres:postgres@postgres:5432/evolution
+      - LOG_LEVEL=${LOG_LEVEL:-warn}
+      - DEL_INSTANCE=false
+      - CONFIG_SESSION_PHONE_CLIENT=WhatsApp RMD
+    volumes:
+      - evolution-data:/evolution/instances
+      - evolution-logs:/evolution/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rmd-network
+    profiles:
+      - full
+      - all
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  # ===========================================
+  # PostgreSQL (for Evolution API)
+  # ===========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: rmd-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=evolution
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - rmd-network
+    profiles:
+      - full
+      - all
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+volumes:
+  rmd-data:
+    name: rmd-data
+  rmd-logs:
+    name: rmd-logs
+  webapp-data:
+    name: webapp-data
+  loki-data:
+    name: loki-data
+  grafana-data:
+    name: grafana-data
+  redis-data:
+    name: redis-data
+  evolution-data:
+    name: evolution-data
+  evolution-logs:
+    name: evolution-logs
+  postgres-data:
+    name: postgres-data
+
+networks:
+  rmd-network:
+    name: rmd-network
+    driver: bridge

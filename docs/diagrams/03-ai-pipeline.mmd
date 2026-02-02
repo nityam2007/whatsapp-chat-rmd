@@ -1,0 +1,82 @@
+flowchart TD
+    subgraph "Input"
+        MSG[📨 Incoming WhatsApp Message]
+    end
+
+    subgraph "Stage 1: Heuristic Gate"
+        H1{Contains keywords?<br/>tomorrow, meeting,<br/>remind, schedule...}
+        H2[Calculate Signal Score]
+    end
+
+    subgraph "Stage 2: Small LLM Classification"
+        C1[GPT-4o-mini]
+        C2{Event Type?}
+        C3[new_event]
+        C4[reminder]
+        C5[update_event]
+        C6[cancel_event]
+        C7[irrelevant]
+    end
+
+    subgraph "Stage 3: Context Building"
+        CTX1[Fetch Recent Messages<br/>Same Chat]
+        CTX2[Search Similar Events<br/>Vector Store]
+        CTX3[Build Context Window]
+    end
+
+    subgraph "Stage 4: Token Compression"
+        TC1{Tokens > 2000?}
+        TC2[Compress with Quicksave]
+        TC3[Keep Original]
+    end
+
+    subgraph "Stage 5: Big LLM Extraction"
+        E1[GPT-4o]
+        E2[Extract Structured Data:<br/>title, time, date,<br/>condition, participants]
+    end
+
+    subgraph "Stage 6: Event Routing"
+        R1{Event Type}
+        R2[Store New Event]
+        R3[Update Existing]
+        R4[Cancel Event]
+        R5[Schedule Reminder]
+    end
+
+    subgraph "Output"
+        OUT1[(SQLite DB)]
+        OUT2[(Vector Store)]
+        OUT3[⏰ Scheduler]
+        OUT4[📤 Push Notification]
+    end
+
+    MSG --> H1
+    H1 -->|No Signal| DROP[🗑️ Drop Message]
+    H1 -->|Has Signal| H2
+    H2 --> C1
+    C1 --> C2
+    C2 --> C3 & C4 & C5 & C6 & C7
+    C7 --> DROP
+    C3 & C4 & C5 & C6 --> CTX1
+    CTX1 --> CTX2
+    CTX2 --> CTX3
+    CTX3 --> TC1
+    TC1 -->|Yes| TC2
+    TC1 -->|No| TC3
+    TC2 & TC3 --> E1
+    E1 --> E2
+    E2 --> R1
+    R1 -->|new_event| R2
+    R1 -->|update| R3
+    R1 -->|cancel| R4
+    R1 -->|reminder| R5
+    R2 & R3 --> OUT1
+    R2 --> OUT2
+    R5 --> OUT3
+    OUT3 --> OUT4
+
+    style MSG fill:#25D366,color:#fff
+    style C1 fill:#10a37f,color:#fff
+    style E1 fill:#10a37f,color:#fff
+    style OUT4 fill:#f59e0b,color:#fff
+    style DROP fill:#ef4444,color:#fff

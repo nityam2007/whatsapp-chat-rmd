@@ -1,0 +1,45 @@
+# Promtail Configuration
+# Collects logs and sends to Loki
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # RMD Service logs
+  - job_name: rmd-service
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: rmd-service
+          __path__: /var/log/rmd/*.log
+
+  # Pipeline logs (separate files)
+  - job_name: rmd-pipeline
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: rmd-pipeline
+          __path__: /var/log/rmd/pipeline/*.log
+    pipeline_stages:
+      - regex:
+          expression: '^\[(?P<timestamp>[^\]]+)\]\s+(?P<status>[^\n]+)'
+      - labels:
+          status:
+
+  # Evolution API logs
+  - job_name: evolution-api
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: evolution-api
+          __path__: /var/log/evolution/*.log

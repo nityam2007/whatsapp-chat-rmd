@@ -1,0 +1,86 @@
+# WhatsApp Chat RMD - Orchestrator Dockerfile
+# Multi-stage build for optimal image size
+
+# ===========================================
+# Stage 1: Builder
+# ===========================================
+FROM node:22-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++ && \
+    ln -sf python3 /usr/bin/python
+
+# Copy package files first (better layer caching)
+COPY package*.json ./
+
+# Install all dependencies (including devDependencies for build)
+RUN npm ci --include=dev
+
+# Copy source files
+COPY tsconfig.json ./
+COPY src ./src
+
+# Build TypeScript
+RUN npm run build
+
+# Prune dev dependencies
+RUN npm prune --omit=dev
+
+# ===========================================
+# Stage 2: Production
+# ===========================================
+FROM node:22-alpine AS production
+
+# Labels for image metadata
+LABEL org.opencontainers.image.title="WhatsApp Chat RMD Orchestrator"
+LABEL org.opencontainers.image.description="Orchestrator service for multi-container deployment"
+LABEL org.opencontainers.image.version="0.5.0"
+
+# Set working directory
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apk add --no-cache \
+    wget \
+    dumb-init \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 -G nodejs
+
+# Copy package files
+COPY --from=builder /app/package*.json ./
+
+# Copy node_modules from builder (already pruned)
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy built files
+COPY --from=builder /app/dist ./dist
+
+# Create directories with proper permissions
+RUN mkdir -p logs && \
+    chown -R nodejs:nodejs /app
+
+# Switch to non-root user
+USER nodejs
+
+# Set environment
+ENV NODE_ENV=production
+ENV ORCHESTRATOR_PORT=4000
+
+# Expose port
+EXPOSE 4000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Run orchestrator
+CMD ["node", "dist/orchestrator/index.js"]

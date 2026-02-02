@@ -1,0 +1,35 @@
+sequenceDiagram
+    autonumber
+    participant Browser as 🌐 Browser
+    participant SW as 📋 Service Worker
+    participant WebApp as 🖥️ Push Webapp :3002
+    participant RMD as 🧠 RMD Service
+    participant Scheduler as ⏰ Scheduler
+
+    Note over Browser,WebApp: Initial Setup (One Time)
+    Browser->>WebApp: Open http://localhost:3002
+    WebApp-->>Browser: Return HTML + JS
+    Browser->>Browser: Register Service Worker
+    Browser->>Browser: Request Notification Permission
+    Browser->>WebApp: GET /api/vapid-public-key
+    WebApp-->>Browser: VAPID Public Key
+    Browser->>Browser: Create Push Subscription
+    Browser->>WebApp: POST /api/subscribe
+    WebApp->>WebApp: Store Subscription
+    WebApp-->>Browser: ✅ Subscribed
+
+    Note over RMD,Scheduler: When Event is Detected
+    RMD->>RMD: Extract Event from Message
+    RMD->>Scheduler: Schedule Reminder
+    
+    Note over Scheduler,Browser: When Reminder Time Arrives
+    Scheduler->>WebApp: POST /api/notify
+    WebApp->>WebApp: Load Subscription
+    WebApp->>SW: Web Push (VAPID signed)
+    SW->>SW: Receive Push Event
+    SW->>Browser: showNotification()
+    Browser-->>Browser: 🔔 Display Notification
+
+    Note over Browser: User Interaction
+    Browser->>SW: notificationclick
+    SW->>Browser: Focus/Open App
