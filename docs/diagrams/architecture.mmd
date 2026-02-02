@@ -1,0 +1,266 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6366f1', 'secondaryColor': '#8b5cf6', 'tertiaryColor': '#f59e0b'}}}%%
+
+flowchart TB
+    %% ============================================
+    %% WHATSAPP CHAT RMD - COMPLETE ARCHITECTURE
+    %% Version: 0.5.0 (Auto-Learning System)
+    %% ============================================
+
+    %% ----- INPUT LAYER -----
+    subgraph INPUT["INPUT LAYER"]
+        PHONE["Phone: WhatsApp App"]
+        WACLOUD["WhatsApp Cloud Servers"]
+    end
+
+    %% ----- WHATSAPP INTEGRATION -----
+    subgraph EVOLUTION["WHATSAPP INTEGRATION (Port 8080)"]
+        EVO["Evolution API"]
+        BAILEYS["Baileys Library"]
+        POSTGRES[("PostgreSQL")]
+    end
+
+    %% ----- MAIN APPLICATION -----
+    subgraph RMD["RMD SERVICE (Port 3000)"]
+        
+        %% Webhook Layer
+        subgraph WEBHOOK_LAYER["Webhook Layer"]
+            WEBHOOK["POST /webhook/evolution"]
+            STORE_RAW["Store Raw Message"]
+        end
+
+        %% Pipeline Stage 1: Heuristic Gate
+        subgraph STAGE1["Stage 1: Heuristic Gate"]
+            HEURISTIC{"Signal Detection"}
+            KEYWORDS["Keywords: tomorrow, meeting, remind, kal, baje, exam..."]
+            REGIONAL["Regional: Tamil, Telugu, Marathi, Bengali, Gujarati"]
+            SCORE["Calculate Score"]
+        end
+
+        %% Pipeline Stage 2: Classification
+        subgraph STAGE2["Stage 2: Small LLM Classification"]
+            CLASSIFIER["GPT-4o-mini"]
+            EVENT_TYPE{"Event Type?"}
+            NEW_EVENT["new_event"]
+            REMINDER["reminder"]
+            UPDATE_EVENT["update_event"]
+            CANCEL_EVENT["cancel_event"]
+            IRRELEVANT["irrelevant"]
+        end
+
+        %% Pipeline Stage 3: Context Building
+        subgraph STAGE3["Stage 3: Context Building"]
+            FETCH_RECENT["Fetch Recent Messages"]
+            VECTOR_SEARCH["Vector Similarity Search"]
+            BUILD_CONTEXT["Build Context Window"]
+            TOKEN_CHECK{"Tokens > 2000?"}
+            COMPRESS["Compress with Quicksave"]
+            NO_COMPRESS["Keep Original"]
+        end
+
+        %% Pipeline Stage 4: Rule Engine + Auto-Learning
+        subgraph STAGE4["Stage 4: Rule Engine + Auto-Learning"]
+            RULE_ENGINE["Rule Engine"]
+            STATIC_PATTERNS["70+ Static Patterns"]
+            LEARNED_PATTERNS["Dynamic Learned Patterns"]
+            CONFIDENCE{"Confidence >= 0.75 AND hasTime?"}
+        end
+
+        %% Pipeline Stage 5: LLM Extraction
+        subgraph STAGE5["Stage 5: Big LLM Extraction"]
+            EXTRACTOR["GPT-4o"]
+            EXTRACT_DATA["Extract: title, time, date, participants"]
+            LOG_EXTRACTION["Log to llm_extraction_logs"]
+        end
+
+        %% Pipeline Stage 6: Event Routing
+        subgraph STAGE6["Stage 6: Event Routing"]
+            ROUTER{"Route by Type"}
+            CREATE_EVENT["Create New Event"]
+            UPDATE_DB["Update Existing Event"]
+            CANCEL_DB["Cancel Event"]
+            SCHEDULE["Schedule Reminder"]
+        end
+
+        %% Storage Layer
+        subgraph STORAGE["Storage Layer"]
+            SQLITE[("SQLite Database")]
+            FAISS[("FAISS Vector Store")]
+        end
+
+        %% Auto-Learning System
+        subgraph LEARNING["Auto-Learning System"]
+            LLM_LOGS[("llm_extraction_logs")]
+            PATTERN_LEARNER["Pattern Learner (Hourly)"]
+            ANALYZE["Analyze Patterns"]
+            VALIDATE["Validate 70%+ Precision"]
+            LEARNED_DB[("learned_patterns")]
+            RELOAD["Reload Patterns (5 min)"]
+        end
+
+    end
+
+    %% ----- EXTERNAL SERVICES -----
+    subgraph EXTERNAL["EXTERNAL SERVICES"]
+        OPENAI["OpenAI API"]
+        REDIS[("Redis Cache")]
+    end
+
+    %% ----- MONITORING -----
+    subgraph MONITORING["MONITORING STACK"]
+        GRAFANA["Grafana (Port 3001)"]
+        LOKI["Loki (Port 3100)"]
+        PROMTAIL["Promtail"]
+    end
+
+    %% ----- NOTIFICATION -----
+    subgraph NOTIFICATION["PUSH NOTIFICATION (Port 3002)"]
+        WEBAPP["Push Webapp"]
+        VAPID["VAPID Keys"]
+        SERVICE_WORKER["Service Worker"]
+    end
+
+    %% ----- OUTPUT -----
+    subgraph OUTPUT["OUTPUT LAYER"]
+        BROWSER["Browser Notification"]
+    end
+
+    %% ============================================
+    %% CONNECTIONS - Main Flow
+    %% ============================================
+
+    %% Input to Evolution
+    PHONE <--> WACLOUD
+    WACLOUD <--> BAILEYS
+    BAILEYS --> EVO
+    EVO --> POSTGRES
+
+    %% Evolution to RMD
+    EVO -->|"Webhook POST"| WEBHOOK
+    WEBHOOK --> STORE_RAW
+    STORE_RAW --> SQLITE
+
+    %% Stage 1: Heuristic
+    STORE_RAW --> HEURISTIC
+    HEURISTIC --> KEYWORDS
+    HEURISTIC --> REGIONAL
+    KEYWORDS --> SCORE
+    REGIONAL --> SCORE
+    HEURISTIC -->|"No Signal"| DROP["DROP MESSAGE"]
+    SCORE -->|"Has Signal"| CLASSIFIER
+
+    %% Stage 2: Classification
+    CLASSIFIER <-->|"Classify"| OPENAI
+    CLASSIFIER --> EVENT_TYPE
+    EVENT_TYPE --> NEW_EVENT
+    EVENT_TYPE --> REMINDER
+    EVENT_TYPE --> UPDATE_EVENT
+    EVENT_TYPE --> CANCEL_EVENT
+    EVENT_TYPE --> IRRELEVANT
+    IRRELEVANT --> DROP
+
+    %% Stage 3: Context
+    NEW_EVENT --> FETCH_RECENT
+    REMINDER --> FETCH_RECENT
+    UPDATE_EVENT --> FETCH_RECENT
+    CANCEL_EVENT --> FETCH_RECENT
+    FETCH_RECENT --> VECTOR_SEARCH
+    VECTOR_SEARCH --> FAISS
+    VECTOR_SEARCH --> BUILD_CONTEXT
+    BUILD_CONTEXT --> TOKEN_CHECK
+    TOKEN_CHECK -->|"Yes"| COMPRESS
+    TOKEN_CHECK -->|"No"| NO_COMPRESS
+
+    %% Stage 4: Rule Engine
+    COMPRESS --> RULE_ENGINE
+    NO_COMPRESS --> RULE_ENGINE
+    RULE_ENGINE --> STATIC_PATTERNS
+    RULE_ENGINE --> LEARNED_PATTERNS
+    STATIC_PATTERNS --> CONFIDENCE
+    LEARNED_PATTERNS --> CONFIDENCE
+
+    %% Stage 5: LLM Extraction (if needed)
+    CONFIDENCE -->|"Yes: Skip LLM"| ROUTER
+    CONFIDENCE -->|"No: Use LLM"| EXTRACTOR
+    EXTRACTOR <-->|"Extract"| OPENAI
+    EXTRACTOR --> EXTRACT_DATA
+    EXTRACT_DATA --> LOG_EXTRACTION
+    LOG_EXTRACTION --> LLM_LOGS
+    LOG_EXTRACTION --> ROUTER
+
+    %% Stage 6: Routing
+    ROUTER -->|"new_event"| CREATE_EVENT
+    ROUTER -->|"update"| UPDATE_DB
+    ROUTER -->|"cancel"| CANCEL_DB
+    ROUTER -->|"reminder"| SCHEDULE
+    CREATE_EVENT --> SQLITE
+    CREATE_EVENT --> FAISS
+    UPDATE_DB --> SQLITE
+    CANCEL_DB --> SQLITE
+    SCHEDULE --> WEBAPP
+
+    %% Auto-Learning Loop
+    LLM_LOGS --> PATTERN_LEARNER
+    PATTERN_LEARNER --> ANALYZE
+    ANALYZE --> VALIDATE
+    VALIDATE --> LEARNED_DB
+    LEARNED_DB --> RELOAD
+    RELOAD --> LEARNED_PATTERNS
+
+    %% Notification Flow
+    WEBAPP --> VAPID
+    VAPID --> SERVICE_WORKER
+    SERVICE_WORKER --> BROWSER
+
+    %% Monitoring Flow
+    RMD --> PROMTAIL
+    PROMTAIL --> LOKI
+    LOKI --> GRAFANA
+
+    %% Redis Connections
+    EVO <--> REDIS
+    RMD <--> REDIS
+
+    %% ============================================
+    %% STYLING
+    %% ============================================
+
+    %% Input styling
+    style PHONE fill:#25D366,color:#fff,stroke:#128C7E
+    style WACLOUD fill:#25D366,color:#fff,stroke:#128C7E
+
+    %% Evolution styling
+    style EVO fill:#6366f1,color:#fff
+    style BAILEYS fill:#6366f1,color:#fff
+
+    %% Pipeline styling
+    style WEBHOOK fill:#3b82f6,color:#fff
+    style HEURISTIC fill:#8b5cf6,color:#fff
+    style CLASSIFIER fill:#10a37f,color:#fff
+    style RULE_ENGINE fill:#f59e0b,color:#fff
+    style EXTRACTOR fill:#10a37f,color:#fff
+    style ROUTER fill:#8b5cf6,color:#fff
+
+    %% Storage styling
+    style SQLITE fill:#0ea5e9,color:#fff
+    style FAISS fill:#0ea5e9,color:#fff
+    style POSTGRES fill:#336791,color:#fff
+    style REDIS fill:#dc2626,color:#fff
+
+    %% Learning styling
+    style PATTERN_LEARNER fill:#f59e0b,color:#fff
+    style LLM_LOGS fill:#f59e0b,color:#000
+    style LEARNED_DB fill:#f59e0b,color:#000
+
+    %% External styling
+    style OPENAI fill:#10a37f,color:#fff
+
+    %% Notification styling
+    style WEBAPP fill:#f97316,color:#fff
+    style BROWSER fill:#f97316,color:#fff
+
+    %% Monitoring styling
+    style GRAFANA fill:#f97316,color:#fff
+    style LOKI fill:#f97316,color:#fff
+
+    %% Drop styling
+    style DROP fill:#ef4444,color:#fff

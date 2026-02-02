@@ -1,6 +1,6 @@
 flowchart TD
     subgraph "Input"
-        MSG[📨 Incoming WhatsApp Message]
+        MSG[Incoming WhatsApp Message]
     end
 
     subgraph "Stage 1: Heuristic Gate"
@@ -24,18 +24,26 @@ flowchart TD
         CTX3[Build Context Window]
     end
 
-    subgraph "Stage 4: Token Compression"
+    subgraph "Stage 4: Rule Engine"
+        RE1{Check Static Rules}
+        RE2{Check Learned Patterns}
+        RE3[High Confidence Match]
+        RE4[Low Confidence]
+    end
+
+    subgraph "Stage 5: Token Compression"
         TC1{Tokens > 2000?}
         TC2[Compress with Quicksave]
         TC3[Keep Original]
     end
 
-    subgraph "Stage 5: Big LLM Extraction"
+    subgraph "Stage 6: Big LLM Extraction"
         E1[GPT-4o]
         E2[Extract Structured Data:<br/>title, time, date,<br/>condition, participants]
+        E3[Log Extraction to DB]
     end
 
-    subgraph "Stage 6: Event Routing"
+    subgraph "Stage 7: Event Routing"
         R1{Event Type}
         R2[Store New Event]
         R3[Update Existing]
@@ -43,15 +51,23 @@ flowchart TD
         R5[Schedule Reminder]
     end
 
+    subgraph "Auto-Learning Loop"
+        AL1[Pattern Learner<br/>Hourly Job]
+        AL2[Analyze Extraction Logs]
+        AL3{Precision >= 70%?}
+        AL4[Create Learned Pattern]
+        AL5[Reload Rule Engine]
+    end
+
     subgraph "Output"
         OUT1[(SQLite DB)]
         OUT2[(Vector Store)]
-        OUT3[⏰ Scheduler]
-        OUT4[📤 Push Notification]
+        OUT3[Scheduler]
+        OUT4[Push Notification]
     end
 
     MSG --> H1
-    H1 -->|No Signal| DROP[🗑️ Drop Message]
+    H1 -->|No Signal| DROP[Drop Message]
     H1 -->|Has Signal| H2
     H2 --> C1
     C1 --> C2
@@ -60,12 +76,19 @@ flowchart TD
     C3 & C4 & C5 & C6 --> CTX1
     CTX1 --> CTX2
     CTX2 --> CTX3
-    CTX3 --> TC1
+    CTX3 --> RE1
+    RE1 -->|Match| RE3
+    RE1 -->|No Match| RE2
+    RE2 -->|Match| RE3
+    RE2 -->|No Match| RE4
+    RE3 --> R1
+    RE4 --> TC1
     TC1 -->|Yes| TC2
     TC1 -->|No| TC3
     TC2 & TC3 --> E1
     E1 --> E2
-    E2 --> R1
+    E2 --> E3
+    E3 --> R1
     R1 -->|new_event| R2
     R1 -->|update| R3
     R1 -->|cancel| R4
@@ -75,8 +98,18 @@ flowchart TD
     R5 --> OUT3
     OUT3 --> OUT4
 
+    E3 -.->|Feed| AL1
+    AL1 --> AL2
+    AL2 --> AL3
+    AL3 -->|Yes| AL4
+    AL3 -->|No| AL1
+    AL4 --> AL5
+    AL5 -.->|Update| RE2
+
     style MSG fill:#25D366,color:#fff
     style C1 fill:#10a37f,color:#fff
     style E1 fill:#10a37f,color:#fff
     style OUT4 fill:#f59e0b,color:#fff
     style DROP fill:#ef4444,color:#fff
+    style RE3 fill:#22c55e,color:#fff
+    style AL4 fill:#8b5cf6,color:#fff

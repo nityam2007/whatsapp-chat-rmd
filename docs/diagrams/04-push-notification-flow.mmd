@@ -1,10 +1,10 @@
 sequenceDiagram
     autonumber
-    participant Browser as 🌐 Browser
-    participant SW as 📋 Service Worker
-    participant WebApp as 🖥️ Push Webapp :3002
-    participant RMD as 🧠 RMD Service
-    participant Scheduler as ⏰ Scheduler
+    participant Browser as Browser
+    participant SW as Service Worker
+    participant WebApp as Push Webapp :3002
+    participant RMD as RMD Service
+    participant Scheduler as Scheduler
 
     Note over Browser,WebApp: Initial Setup (One Time)
     Browser->>WebApp: Open http://localhost:3002
@@ -16,7 +16,7 @@ sequenceDiagram
     Browser->>Browser: Create Push Subscription
     Browser->>WebApp: POST /api/subscribe
     WebApp->>WebApp: Store Subscription
-    WebApp-->>Browser: ✅ Subscribed
+    WebApp-->>Browser: Subscribed
 
     Note over RMD,Scheduler: When Event is Detected
     RMD->>RMD: Extract Event from Message
@@ -28,7 +28,7 @@ sequenceDiagram
     WebApp->>SW: Web Push (VAPID signed)
     SW->>SW: Receive Push Event
     SW->>Browser: showNotification()
-    Browser-->>Browser: 🔔 Display Notification
+    Browser-->>Browser: Display Notification
 
     Note over Browser: User Interaction
     Browser->>SW: notificationclick

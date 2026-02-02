@@ -1,13 +1,13 @@
 flowchart LR
-    subgraph Phone["📱 Phone"]
+    subgraph Phone["Phone"]
         WA[WhatsApp]
     end
 
-    subgraph Cloud["☁️ WhatsApp Cloud"]
+    subgraph Cloud["WhatsApp Cloud"]
         WAS[WhatsApp Servers]
     end
 
-    subgraph Server["🖥️ Your Server"]
+    subgraph Server["Your Server"]
         EVO[Evolution API<br/>:8080]
         
         subgraph RMD["RMD Service :3000"]
@@ -15,6 +15,7 @@ flowchart LR
             HG[Heuristic Gate]
             CL[Classifier<br/>gpt-4o-mini]
             CB[Context Builder]
+            RE[Rule Engine<br/>Static + Learned]
             EX[Extractor<br/>gpt-4o]
             ER[Event Router]
         end
@@ -24,16 +25,21 @@ flowchart LR
             VEC[(Vectors)]
         end
         
+        subgraph Learning["Auto-Learning"]
+            PL[Pattern Learner]
+            LP[(Learned Patterns)]
+        end
+        
         SCH[Scheduler]
         PUSH[Push Service<br/>:3002]
     end
 
-    subgraph Browser["🌐 Browser"]
+    subgraph Browser["Browser"]
         SW[Service Worker]
-        NOT[🔔 Notification]
+        NOT[Notification]
     end
 
-    subgraph OpenAI["🤖 OpenAI"]
+    subgraph OpenAI["OpenAI"]
         API[API]
     end
 
@@ -45,7 +51,9 @@ flowchart LR
     CL -->|Classify| API
     API -->|Event Type| CL
     CL --> CB
-    CB --> EX
+    CB --> RE
+    RE -->|High Confidence| ER
+    RE -->|Low Confidence| EX
     EX -->|Extract| API
     API -->|Structured Data| EX
     EX --> ER
@@ -56,6 +64,13 @@ flowchart LR
     PUSH -->|Web Push| SW
     SW --> NOT
 
+    EX -.->|Log| SQL
+    SQL -.->|Feed| PL
+    PL -.->|Create| LP
+    LP -.->|Load| RE
+
     style WA fill:#25D366,color:#fff
     style API fill:#10a37f,color:#fff
     style NOT fill:#f59e0b,color:#fff
+    style RE fill:#22c55e,color:#fff
+    style PL fill:#8b5cf6,color:#fff

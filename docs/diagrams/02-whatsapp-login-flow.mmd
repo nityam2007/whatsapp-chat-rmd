@@ -1,35 +1,40 @@
+%%{init: {'theme': 'base'}}%%
+
 sequenceDiagram
-    autonumber
-    participant User as 👤 User
-    participant Phone as 📱 WhatsApp Phone
-    participant Script as 🖥️ Login Script
-    participant EVO as 🔗 Evolution API
-    participant WA as ☁️ WhatsApp Servers
+    %% ============================================
+    %% WHATSAPP LOGIN FLOW - QR Code Authentication
+    %% ============================================
+
+    participant User as User
+    participant Phone as WhatsApp Phone
+    participant Script as Login Script
+    participant EVO as Evolution API
+    participant WA as WhatsApp Servers
 
     User->>Script: Run ./scripts/whatsapp-login.sh
     Script->>EVO: POST /instance/create
     EVO-->>Script: Instance created
     
-    Script->>EVO: GET /instance/connect/{name}
+    Script->>EVO: GET /instance/connect/name
     EVO->>WA: Request QR Code
     WA-->>EVO: QR Code Data
-    EVO-->>Script: QR Code (base64 + text)
+    EVO-->>Script: QR Code base64 + text
     
     Script-->>User: Display QR Code
     
     Note over User,Phone: User opens WhatsApp on phone
-    User->>Phone: Menu → Linked Devices → Link
+    User->>Phone: Menu - Linked Devices - Link
     Phone->>Phone: Camera scans QR code
     
     Phone->>WA: Authenticate with QR
-    WA->>WA: Verify & Create Session
+    WA->>WA: Verify and Create Session
     WA-->>Phone: Session Confirmed
     WA-->>EVO: Connection Established
     
-    EVO-->>Script: State: "open"
-    Script-->>User: ✅ Connected!
+    EVO-->>Script: State: open
+    Script-->>User: Connected Successfully
 
-    Note over EVO,WA: Now all messages flow through Evolution API
+    Note over EVO,WA: Messages now flow through Evolution API
     
     loop Every Message Received
         WA->>EVO: New Message
