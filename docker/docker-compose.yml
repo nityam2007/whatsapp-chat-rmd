@@ -1,4 +1,4 @@
-# WhatsApp Chat RMD - Docker Compose
+# Argus - Docker Compose
 # v0.5.0 - Production Configuration
 #
 # Usage:
@@ -7,20 +7,20 @@
 #   docker compose --profile monitoring up -d  # With monitoring
 #   docker compose --profile all up -d      # Everything
 
-name: whatsapp-rmd
+name: argus
 
 services:
   # ===========================================
-  # RMD Service (Main Application)
+  # Argus Service (Main Application)
   # ===========================================
-  rmd-service:
+  argus-service:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: rmd-service
+    container_name: argus-service
     restart: unless-stopped
     ports:
-      - "${RMD_PORT:-3000}:3000"
+      - "${ARGUS_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -35,10 +35,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - TIMEZONE=Asia/Kolkata
     volumes:
-      - rmd-data:/app/data
-      - rmd-logs:/app/logs
+      - argus-data:/app/data
+      - argus-logs:/app/logs
     networks:
-      - rmd-network
+      - argus-network
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/webhook/health"]
       interval: 30s
@@ -61,14 +61,14 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.webapp
-    container_name: rmd-webapp
+    container_name: argus-webapp
     restart: unless-stopped
     ports:
       - "${WEBAPP_PORT:-3002}:3002"
     environment:
       - NODE_ENV=production
       - WEBAPP_PORT=3002
-      - RMD_API_URL=http://rmd-service:3000
+      - RMD_API_URL=http://argus-service:3000
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_EMAIL=${VAPID_EMAIL:-mailto:admin@example.com}
@@ -76,10 +76,10 @@ services:
     volumes:
       - webapp-data:/app/data
     depends_on:
-      rmd-service:
+      argus-service:
         condition: service_healthy
     networks:
-      - rmd-network
+      - argus-network
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health"]
       interval: 30s
@@ -97,7 +97,7 @@ services:
   # ===========================================
   redis:
     image: redis:7-alpine
-    container_name: rmd-redis
+    container_name: argus-redis
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -111,7 +111,7 @@ services:
     volumes:
       - redis-data:/data
     networks:
-      - rmd-network
+      - argus-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -129,7 +129,7 @@ services:
   # ===========================================
   loki:
     image: grafana/loki:3.0.0
-    container_name: rmd-loki
+    container_name: argus-loki
     restart: unless-stopped
     ports:
       - "${LOKI_PORT:-3100}:3100"
@@ -138,7 +138,7 @@ services:
       - ./loki-config.yml:/etc/loki/local-config.yaml:ro
       - loki-data:/loki
     networks:
-      - rmd-network
+      - argus-network
     profiles:
       - monitoring
       - all
@@ -159,18 +159,18 @@ services:
   # ===========================================
   promtail:
     image: grafana/promtail:3.0.0
-    container_name: rmd-promtail
+    container_name: argus-promtail
     restart: unless-stopped
     volumes:
       - ./promtail-config.yml:/etc/promtail/config.yml:ro
-      - rmd-logs:/var/log/rmd:ro
+      - argus-logs:/var/log/argus:ro
       - evolution-logs:/var/log/evolution:ro
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       loki:
         condition: service_healthy
     networks:
-      - rmd-network
+      - argus-network
     profiles:
       - monitoring
       - all
@@ -185,7 +185,7 @@ services:
   # ===========================================
   grafana:
     image: grafana/grafana:11.0.0
-    container_name: rmd-grafana
+    container_name: argus-grafana
     restart: unless-stopped
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
@@ -207,7 +207,7 @@ services:
       loki:
         condition: service_healthy
     networks:
-      - rmd-network
+      - argus-network
     profiles:
       - monitoring
       - all
@@ -228,7 +228,7 @@ services:
   # ===========================================
   evolution-api:
     image: atendai/evolution-api:v2.1.1
-    container_name: rmd-evolution
+    container_name: argus-evolution
     restart: unless-stopped
     ports:
       - "${EVOLUTION_PORT:-8080}:8080"
@@ -236,14 +236,14 @@ services:
       - SERVER_URL=http://localhost:8080
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-your_api_key}
       - WEBHOOK_GLOBAL_ENABLED=true
-      - WEBHOOK_GLOBAL_URL=http://rmd-service:3000/webhook/evolution
+      - WEBHOOK_GLOBAL_URL=http://argus-service:3000/webhook/evolution
       - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=true
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://postgres:postgres@postgres:5432/evolution
       - LOG_LEVEL=${LOG_LEVEL:-warn}
       - DEL_INSTANCE=false
-      - CONFIG_SESSION_PHONE_CLIENT=WhatsApp RMD
+      - CONFIG_SESSION_PHONE_CLIENT=Argus
     volumes:
       - evolution-data:/evolution/instances
       - evolution-logs:/evolution/logs
@@ -251,7 +251,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - rmd-network
+      - argus-network
     profiles:
       - full
       - all
@@ -272,7 +272,7 @@ services:
   # ===========================================
   postgres:
     image: postgres:16-alpine
-    container_name: rmd-postgres
+    container_name: argus-postgres
     restart: unless-stopped
     environment:
       - POSTGRES_USER=postgres
@@ -282,7 +282,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
-      - rmd-network
+      - argus-network
     profiles:
       - full
       - all
@@ -299,26 +299,26 @@ services:
           memory: 512M
 
 volumes:
-  rmd-data:
-    name: rmd-data
-  rmd-logs:
-    name: rmd-logs
+  argus-data:
+    name: argus-data
+  argus-logs:
+    name: argus-logs
   webapp-data:
-    name: webapp-data
+    name: argus-webapp-data
   loki-data:
-    name: loki-data
+    name: argus-loki-data
   grafana-data:
-    name: grafana-data
+    name: argus-grafana-data
   redis-data:
-    name: redis-data
+    name: argus-redis-data
   evolution-data:
-    name: evolution-data
+    name: argus-evolution-data
   evolution-logs:
-    name: evolution-logs
+    name: argus-evolution-logs
   postgres-data:
-    name: postgres-data
+    name: argus-postgres-data
 
 networks:
-  rmd-network:
-    name: rmd-network
+  argus-network:
+    name: argus-network
     driver: bridge
