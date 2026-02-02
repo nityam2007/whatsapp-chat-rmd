@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-chat-rmd",
   "version": "0.5.0",
-  "description": "WhatsApp Chat Reminder Detection - AI-powered event extraction from WhatsApp messages",
+  "description": "Argus - AI-powered event extraction from WhatsApp messages",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

@@ -10,7 +10,7 @@ flowchart LR
     subgraph Server["Your Server"]
         EVO[Evolution API<br/>:8080]
         
-        subgraph RMD["RMD Service :3000"]
+        subgraph ARGUS["Argus Service :3000"]
             WH[Webhook]
             HG[Heuristic Gate]
             CL[Classifier<br/>gpt-4o-mini]

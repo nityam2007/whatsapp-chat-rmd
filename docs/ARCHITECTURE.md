@@ -1,4 +1,4 @@
-# WhatsApp Chat RMD - Architecture & Flow Diagrams
+# Argus - Architecture & Flow Diagrams
 
 Open these diagrams in any Mermaid viewer:
 - [Mermaid Live Editor](https://mermaid.live)
@@ -25,7 +25,7 @@ graph TB
             BAILEYS[Baileys Library<br/>WhatsApp Web Protocol]
         end
 
-        subgraph "RMD Service Container"
+        subgraph "Argus Service Container"
             WEBHOOK[Webhook Handler<br/>POST /webhook/evolution]
             PIPELINE[AI Pipeline]
             RULEENG[Rule Engine<br/>+ Auto-Learning]
@@ -414,7 +414,7 @@ flowchart LR
     subgraph Server["Your Server"]
         EVO[Evolution API<br/>:8080]
         
-        subgraph RMD["RMD Service :3000"]
+        subgraph ARGUS["Argus Service :3000"]
             WH[Webhook]
             HG[Heuristic Gate]
             CL[Classifier<br/>gpt-4o-mini]
@@ -479,7 +479,7 @@ sequenceDiagram
     participant Browser as Browser
     participant SW as Service Worker
     participant WebApp as Push Webapp :3002
-    participant RMD as RMD Service
+    participant ARGUS as Argus Service
     participant Scheduler as Scheduler
 
     Note over Browser,WebApp: Initial Setup (One Time)
@@ -494,9 +494,9 @@ sequenceDiagram
     WebApp->>WebApp: Store Subscription
     WebApp-->>Browser: Subscribed
 
-    Note over RMD,Scheduler: When Event is Detected
-    RMD->>RMD: Extract Event from Message
-    RMD->>Scheduler: Schedule Reminder
+    Note over ARGUS,Scheduler: When Event is Detected
+    ARGUS->>ARGUS: Extract Event from Message
+    ARGUS->>Scheduler: Schedule Reminder
     
     Note over Scheduler,Browser: When Reminder Time Arrives
     Scheduler->>WebApp: POST /api/notify
@@ -519,7 +519,7 @@ sequenceDiagram
 graph TB
     subgraph "Docker Network: rmd-network"
         subgraph "Core Services"
-            RMD[RMD Service<br/>:3000<br/>Main App]
+            ARGUS[Argus Service<br/>:3000<br/>Main App]
             REDIS[(Redis<br/>:6379<br/>Cache + Rate Limit)]
         end
 
@@ -544,16 +544,16 @@ graph TB
         BROWSERS[User Browsers]
     end
 
-    EVO --> RMD
-    RMD <--> REDIS
-    RMD --> OPENAI
-    RMD --> LOKI
+    EVO --> ARGUS
+    ARGUS <--> REDIS
+    ARGUS --> OPENAI
+    ARGUS --> LOKI
     LOKI --> GRAFANA
-    RMD --> PUSH
+    ARGUS --> PUSH
     PUSH --> BROWSERS
     EVO --> PG
 
-    style RMD fill:#6366f1,color:#fff
+    style ARGUS fill:#6366f1,color:#fff
     style REDIS fill:#dc2626,color:#fff
     style EVO fill:#8b5cf6,color:#fff
     style PUSH fill:#f59e0b,color:#fff
@@ -652,7 +652,7 @@ flowchart LR
 
 ## API Endpoints Reference
 
-### RMD Service (:3000)
+### Argus Service (:3000)
 
 | Method | Path | Description |
 |--------|------|-------------|

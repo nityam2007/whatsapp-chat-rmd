@@ -3,7 +3,7 @@ sequenceDiagram
     participant Browser as Browser
     participant SW as Service Worker
     participant WebApp as Push Webapp :3002
-    participant RMD as RMD Service
+    participant ARGUS as Argus Service
     participant Scheduler as Scheduler
 
     Note over Browser,WebApp: Initial Setup (One Time)
@@ -18,9 +18,9 @@ sequenceDiagram
     WebApp->>WebApp: Store Subscription
     WebApp-->>Browser: Subscribed
 
-    Note over RMD,Scheduler: When Event is Detected
-    RMD->>RMD: Extract Event from Message
-    RMD->>Scheduler: Schedule Reminder
+    Note over ARGUS,Scheduler: When Event is Detected
+    ARGUS->>ARGUS: Extract Event from Message
+    ARGUS->>Scheduler: Schedule Reminder
     
     Note over Scheduler,Browser: When Reminder Time Arrives
     Scheduler->>WebApp: POST /api/notify

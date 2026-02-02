@@ -2,7 +2,7 @@
 
 flowchart TB
     %% ============================================
-    %% WHATSAPP CHAT RMD - COMPLETE ARCHITECTURE
+    %% ARGUS - COMPLETE ARCHITECTURE
     %% Version: 0.5.0 (Auto-Learning System)
     %% ============================================
 
@@ -20,7 +20,7 @@ flowchart TB
     end
 
     %% ----- MAIN APPLICATION -----
-    subgraph RMD["RMD SERVICE (Port 3000)"]
+    subgraph ARGUS["ARGUS SERVICE (Port 3000)"]
         
         %% Webhook Layer
         subgraph WEBHOOK_LAYER["Webhook Layer"]
@@ -134,7 +134,7 @@ flowchart TB
     BAILEYS --> EVO
     EVO --> POSTGRES
 
-    %% Evolution to RMD
+    %% Evolution to Argus
     EVO -->|"Webhook POST"| WEBHOOK
     WEBHOOK --> STORE_RAW
     STORE_RAW --> SQLITE
@@ -212,13 +212,13 @@ flowchart TB
     SERVICE_WORKER --> BROWSER
 
     %% Monitoring Flow
-    RMD --> PROMTAIL
+    ARGUS --> PROMTAIL
     PROMTAIL --> LOKI
     LOKI --> GRAFANA
 
     %% Redis Connections
     EVO <--> REDIS
-    RMD <--> REDIS
+    ARGUS <--> REDIS
 
     %% ============================================
     %% STYLING

@@ -396,8 +396,8 @@ export class Orchestrator {
       logger.info(`Orchestrator started on port ${port}`);
       console.log(`
 ╔═══════════════════════════════════════════════════════════╗
-║              WhatsApp Chat RMD - Orchestrator             ║
-║                      Version 0.2.0                        ║
+║                  Argus - Orchestrator                     ║
+║                      Version 0.5.0                        ║
 ╠═══════════════════════════════════════════════════════════╣
 ║  Server running at: http://localhost:${port}                ║
 ║                                                           ║

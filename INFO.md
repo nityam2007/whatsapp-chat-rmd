@@ -1,7 +1,9 @@
-# WhatsApp Chat RMD - Project Index
+# Argus - Project Index
 
 ## Overview
-WhatsApp Chat Reminder Detection (RMD) - An AI-powered system that extracts events, reminders, and scheduling information from WhatsApp messages.
+**Argus** - An AI-powered system that extracts events, reminders, and scheduling information from WhatsApp messages.
+
+> *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
 **Current Version**: v0.5.0 (Auto-Learning System)
 
@@ -277,7 +279,7 @@ cp .env.example .env
 ./scripts/start.sh
 
 # Or manually:
-npm run dev              # RMD service
+npm run dev              # Argus service
 npm run webapp           # Push webapp
 
 # Run tests

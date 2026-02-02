@@ -149,8 +149,8 @@ export function createServer(): Express {
   // Health check
   app.get('/', (_req: Request, res: Response) => {
     res.json({
-      name: 'WhatsApp Chat RMD',
-      version: '0.4.0',
+      name: 'Argus',
+      version: '0.5.0',
       status: 'running',
       timezone: config.timezone,
       timestamp: getISTTimestamp(),
@@ -787,7 +787,7 @@ export function startServer(): void {
     
     console.log(`
 ╔═══════════════════════════════════════════════════════════════════╗
-║                     WhatsApp Chat RMD v0.5.0                      ║
+║                         Argus v0.5.0                              ║
 ║                      (Auto-Learning Enabled)                      ║
 ╠═══════════════════════════════════════════════════════════════════╣
 ║  Server: http://localhost:${String(config.port).padEnd(5)}                                  ║

@@ -1,6 +1,8 @@
-# WhatsApp Chat RMD
+# Argus
 
-AI-powered reminder and event extraction from WhatsApp messages.
+**Argus** - AI-powered reminder and event extraction from WhatsApp messages.
+
+> *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
 ## Quick Start
 
@@ -37,7 +39,7 @@ chmod +x scripts/*.sh
 
 This will:
 - Generate VAPID keys for push notifications
-- Start the RMD API on `http://localhost:3000`
+- Start the Argus API on `http://localhost:3000`
 - Start the Push Notification webapp on `http://localhost:3002`
 
 ### 3. Connect WhatsApp (Optional - for real messages)
@@ -88,7 +90,7 @@ curl -X POST http://localhost:3000/webhook/test \
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Your Phone     │     │  Evolution API   │     │  RMD Service    │
+│  Your Phone     │     │  Evolution API   │     │  Argus Service  │
 │  (WhatsApp)     │     │  (WhatsApp Web)  │     │  (AI Pipeline)  │
 └────────┬────────┘     └────────┬─────────┘     └────────┬────────┘
          │                       │                        │
@@ -136,7 +138,7 @@ Individual `.mmd` files in `docs/diagrams/` can be opened in [Mermaid Live Edito
 If you prefer to start services manually:
 
 ```bash
-# Terminal 1: Main RMD service
+# Terminal 1: Main Argus service
 npm run dev
 
 # Terminal 2: Push Notification webapp
@@ -203,7 +205,7 @@ open http://localhost:8080
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PORT` | RMD API port | `3000` |
+| `PORT` | Argus API port | `3000` |
 | `OPENAI_API_KEY` | OpenAI API key | Required |
 | `OPENAI_MODEL_SMALL` | Fast classifier model | `gpt-4o-mini` |
 | `OPENAI_MODEL_BIG` | Extraction model | `gpt-4o` |

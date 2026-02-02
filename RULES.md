@@ -1,4 +1,4 @@
-# WhatsApp Chat RMD - Project Rules
+# Argus - Project Rules
 
 ## Core Principles
 

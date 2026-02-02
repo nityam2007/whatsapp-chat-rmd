@@ -115,7 +115,7 @@ describe('API Integration', () => {
       const response = await request(app).get('/');
       
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('name', 'WhatsApp Chat RMD');
+      expect(response.body).toHaveProperty('name', 'Argus');
       expect(response.body).toHaveProperty('status', 'running');
     });
   });

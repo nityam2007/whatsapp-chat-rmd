@@ -1,7 +1,7 @@
 /**
  * Main Entry Point
  * 
- * WhatsApp Chat RMD - AI-powered event extraction
+ * Argus - AI-powered event extraction from WhatsApp messages
  * 
  * AUTO-LEARNING SYSTEM:
  * This system learns from LLM extractions to create better rule patterns.
@@ -41,7 +41,7 @@ let patternLearningInterval: NodeJS.Timeout | null = null;
 let patternReloadInterval: NodeJS.Timeout | null = null;
 
 async function main(): Promise<void> {
-  logger.info('Starting WhatsApp Chat RMD...');
+  logger.info('Starting Argus...');
 
   // Validate configuration
   const configErrors = validateConfig();
