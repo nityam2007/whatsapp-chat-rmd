@@ -5,6 +5,35 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.6] - 2026-02-03
+
+### Fixed - Time-Only Messages Being Dropped
+
+Fixed issue where short time-only messages like "now at 5 PM..." were being classified as irrelevant and dropped instead of being treated as event updates.
+
+#### Root Cause
+1. The classifier prompt didn't have examples of time-only update messages
+2. Short messages like "now at 5 PM" were classified as `irrelevant` before reaching the implicit update detection
+
+#### Fix
+1. **Updated classifier prompt** (`classifier.ts`):
+   - Added examples of time-only update messages
+   - Added explicit note: "Short messages with just a time are likely update_event"
+   
+2. **Enhanced implicit update detection** (`eventRouter.ts`):
+   - Added `contentLooksLikeTime` check (not just title)
+   - Added more patterns: "now at 5", "changed to 5pm", "actually 5pm"
+   - Added Hindi patterns: "ab 5 baje"
+
+#### Files Modified
+```
+src/pipeline/classifier.ts    # Updated prompt with time-only examples
+src/pipeline/eventRouter.ts   # Enhanced detectImplicitUpdate()
+CHANGELOG.md                  # This entry
+```
+
+---
+
 ## [0.7.5] - 2026-02-03
 
 ### Added - Implicit Update Detection & Technical Documentation

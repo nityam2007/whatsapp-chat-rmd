@@ -12,21 +12,31 @@ import logger from '../utils/logger.js';
 
 const CLASSIFICATION_PROMPT = `You are a message classifier. Classify the following message into ONE of these categories:
 - new_event: Message describes a new event, meeting, appointment, reminder, DEADLINE, due date, task, or anything with a time/date reference
-- update_event: Message updates or changes an existing event (time, location, etc.)
+- update_event: Message updates or changes an existing event (time, location, etc.) - includes time-only messages that likely refer to a previous event
 - signal_event: Message is a trigger or condition for a pending event (e.g., "I've arrived", "meeting is done")
 - irrelevant: Message is casual chat with NO time, date, deadline, or scheduling information
 
-IMPORTANT: If a message mentions ANY date, time, deadline, or due date, it is likely new_event, NOT irrelevant.
+IMPORTANT: If a message mentions ANY date, time, deadline, or due date, it is likely new_event or update_event, NOT irrelevant.
+
 Examples of new_event:
 - "Meeting tomorrow at 3pm" → new_event
 - "Deadline is February 8" → new_event
 - "Project due next week" → new_event
 - "Reminder to call mom" → new_event
 
+Examples of update_event:
+- "Let's make it 5pm instead" → update_event
+- "now at 5 PM" → update_event (likely updating a previous event)
+- "postponed to tomorrow" → update_event
+- "changed to 10am" → update_event
+- "actually 3pm" → update_event
+
 Examples of irrelevant:
 - "Ok sounds good" → irrelevant
 - "How are you?" → irrelevant
 - "Thanks!" → irrelevant
+
+CRITICAL: Short messages containing just a time (like "5pm", "now at 5 PM", "today 10am") are LIKELY update_event because they're usually responding to a previous scheduling discussion. Do NOT classify them as irrelevant.
 
 Respond with ONLY a JSON object in this exact format:
 {"event_type": "category", "confidence": 0.0}

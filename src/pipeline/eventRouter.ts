@@ -132,6 +132,7 @@ export async function routeEvent(
  * 1. Message is very short (likely just a time update)
  * 2. Title looks like it's just a time expression (not a real event title)
  * 3. There's a recent event in the same chat
+ * 4. Content contains time-only patterns
  */
 async function detectImplicitUpdate(
   extracted: ExtractedEvent,
@@ -142,13 +143,29 @@ async function detectImplicitUpdate(
   // Short message with time - likely an update
   const isShortMessage = content.length < 50;
   
+  // Check if CONTENT looks like just a time expression (regardless of title)
+  const timeOnlyContentPatterns = [
+    /^now\s+(at\s+)?\d/i,                    // "now at 5 PM", "now 5pm"
+    /^now\s+(today|tomorrow)/i,              // "now today at..."
+    /^(today|tomorrow)\s+(at\s+)?\d/i,       // "today at 5pm", "tomorrow 3pm"
+    /^at\s+\d/i,                             // "at 5 PM"
+    /^\d{1,2}[\s:]*(am|pm)/i,                // "5pm", "5 pm", "5:30pm"
+    /^(ab|abhi)\s+\d/i,                      // Hindi: "ab 5 baje"
+    /^(let'?s\s+)?make\s+it\s+\d/i,          // "let's make it 5pm"
+    /^(changed?|shift(ed)?)\s+to\s+\d/i,     // "changed to 5pm"
+    /^actually\s+\d/i,                       // "actually 5pm"
+    /^instead\s+\d/i,                        // "instead 5pm"
+  ];
+  const contentLooksLikeTime = timeOnlyContentPatterns.some(p => p.test(content));
+  
   // Check if title is just a time expression (not a real event name)
   const timeOnlyTitlePatterns = [
-    /^now\s+(today|tomorrow)/i,
+    /^now\s+(today|tomorrow|at)/i,
     /^(today|tomorrow)\s+at/i,
     /^at\s+\d/i,
     /^\d{1,2}[\s:]*(am|pm)/i,
     /^(now|ab)\s+\d/i,
+    /^now\s+at\s+\d/i,                       // "Now at 5 pm"
   ];
   const titleLooksLikeTime = extracted.title && 
     timeOnlyTitlePatterns.some(p => p.test(extracted.title!));
@@ -166,6 +183,7 @@ async function detectImplicitUpdate(
   
   logger.debug('Implicit update detection', {
     isShortMessage,
+    contentLooksLikeTime,
     titleLooksLikeTime,
     hasRecentEvent,
     hasVeryRecentEvent: !!veryRecentEvent,
@@ -173,12 +191,22 @@ async function detectImplicitUpdate(
     title: extracted.title,
   });
   
+  // If content looks like just a time AND there's a very recent event, it's an update
+  if (contentLooksLikeTime && veryRecentEvent) {
+    return true;
+  }
+  
   // If title looks like just a time AND there's a very recent event, it's an update
   if (titleLooksLikeTime && veryRecentEvent) {
     return true;
   }
   
-  // If it's a short message, looks like time, and has recent events
+  // If it's a short message, content looks like time, and has recent events
+  if (isShortMessage && contentLooksLikeTime && hasRecentEvent) {
+    return true;
+  }
+  
+  // If it's a short message, title looks like time, and has recent events
   if (isShortMessage && titleLooksLikeTime && hasRecentEvent) {
     return true;
   }
