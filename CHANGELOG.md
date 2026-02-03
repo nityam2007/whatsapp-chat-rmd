@@ -15,6 +15,7 @@ New entries are added at the TOP of this file (append-only, newest first).
   - Quick reference commands
   - Documentation update requirements table
   - Version info (v0.7.0, Gemini 3 Flash)
+  - **NEW: Database Cleanup Guide** - Which tables to keep vs clear
 - **INFO.md** - Updated to v0.7.0
   - Added Gemini 3 as primary LLM
   - Updated tech stack with Gemini models
@@ -36,7 +37,7 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 #### Files Modified
 ```
-RULES.md                           # Added AI assistant rules section
+RULES.md                           # Added AI assistant rules, DB cleanup guide
 INFO.md                            # Updated to v0.7.0, Gemini 3
 README.md                          # Added Gemini config
 CHANGELOG.md                       # This entry

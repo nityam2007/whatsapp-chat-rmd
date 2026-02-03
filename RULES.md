@@ -220,6 +220,39 @@ if (!result.success) {
 - Use transactions for multi-step operations
 - Use prepared statements (prevent SQL injection)
 
+### Database Cleanup Guide
+
+When resetting the database for fresh testing, preserve valuable data:
+
+| Table | Action | Reason |
+|-------|--------|--------|
+| `messages` | **KEEP** | Original WhatsApp messages |
+| `learned_patterns` | **KEEP** | Auto-learned extraction patterns (valuable) |
+| `contacts` | **KEEP** | Contact information |
+| `push_subscriptions` | **KEEP** | Browser push subscriptions |
+| `events` | CLEAR | Can regenerate from messages |
+| `reminders` | CLEAR | Old scheduled reminders |
+| `pipeline_logs` | CLEAR | Debug/audit logs |
+| `llm_extraction_logs` | CLEAR | LLM call logs |
+| `pattern_learning_runs` | CLEAR | Learning job history |
+| `archive_metadata` | CLEAR | Archive tracking |
+
+**Quick cleanup command:**
+```bash
+sqlite3 data/db/events.db "
+DELETE FROM events;
+DELETE FROM reminders;
+DELETE FROM pipeline_logs;
+DELETE FROM llm_extraction_logs;
+DELETE FROM pattern_learning_runs;
+DELETE FROM archive_metadata;
+VACUUM;
+"
+
+# Also reset metrics
+curl -X POST http://localhost:3000/api/metrics/reset
+```
+
 ### Vector Store (Per User Container)
 - File-backed index
 - Path: `./data/vectors/`
