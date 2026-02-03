@@ -150,7 +150,7 @@ export function createServer(): Express {
   app.get('/', (_req: Request, res: Response) => {
     res.json({
       name: 'Argus',
-      version: '0.5.0',
+      version: '0.7.0',
       status: 'running',
       timezone: config.timezone,
       timestamp: getISTTimestamp(),
@@ -786,48 +786,48 @@ export function startServer(): void {
     });
     
     console.log(`
-╔═══════════════════════════════════════════════════════════════════╗
-║                         Argus v0.5.0                              ║
-║                      (Auto-Learning Enabled)                      ║
-╠═══════════════════════════════════════════════════════════════════╣
-║  Server: http://localhost:${String(config.port).padEnd(5)}                                  ║
-║  Environment: ${config.nodeEnv.padEnd(52)}║
-║  Timezone: ${config.timezone.padEnd(55)}║
-╠═══════════════════════════════════════════════════════════════════╣
-║  API Endpoints:                                                   ║
-║    GET  /                         - Health check                  ║
-║    POST /webhook/evolution        - WhatsApp webhook              ║
-║    POST /webhook/test             - Test message                  ║
-║                                                                   ║
-║    GET  /api/dashboard/stats      - Dashboard statistics          ║
-║    GET  /api/data/stats           - Data collection stats         ║
-║    GET  /api/metrics              - Pipeline metrics (full)       ║
-║    GET  /api/metrics/summary      - Pipeline metrics (summary)    ║
-║                                                                   ║
-║    GET  /api/events               - List events                   ║
-║    GET  /api/events/:id           - Get event                     ║
-║    POST /api/events/:id/accept    - Accept event                  ║
-║    POST /api/events/:id/decline   - Decline event                 ║
-║    POST /api/events/:id/snooze    - Snooze event                  ║
-║    POST /api/events/:id/complete  - Complete event                ║
-║    DEL  /api/events/:id           - Delete event                  ║
-║                                                                   ║
-║    GET  /api/messages             - List messages                 ║
-║    GET  /api/contacts             - List contacts                 ║
-║    GET  /api/logs                 - List pipeline logs            ║
-║    GET  /api/logs/:step           - Get specific log              ║
-║    GET  /api/pipeline/:messageId  - Get pipeline data for message ║
-║                                                                   ║
-║    GET  /api/archive              - List archives                 ║
-║    POST /api/archive              - Trigger manual archive        ║
-║                                                                   ║
-║  Auto-Learning API:                                               ║
-║    GET  /api/learning/stats       - Pattern learning statistics   ║
-║    GET  /api/learning/patterns    - List learned patterns         ║
-║    GET  /api/learning/logs        - LLM extraction logs           ║
-║    POST /api/learning/run         - Trigger pattern learning      ║
-║    DEL  /api/learning/patterns/:id - Deactivate pattern           ║
-╚═══════════════════════════════════════════════════════════════════╝
++=====================================================================+
+|                         Argus v0.7.0                                |
+|                  (Gemini 2.5 Flash + Auto-Learning)                 |
++=====================================================================+
+|  Server: http://localhost:${String(config.port).padEnd(5)}                                  |
+|  Environment: ${config.nodeEnv.padEnd(52)}|
+|  Timezone: ${config.timezone.padEnd(55)}|
++---------------------------------------------------------------------+
+|  API Endpoints:                                                     |
+|    GET  /                         - Health check                    |
+|    POST /webhook/evolution        - WhatsApp webhook                |
+|    POST /webhook/test             - Test message                    |
+|                                                                     |
+|    GET  /api/dashboard/stats      - Dashboard statistics            |
+|    GET  /api/data/stats           - Data collection stats           |
+|    GET  /api/metrics              - Pipeline metrics (full)         |
+|    GET  /api/metrics/summary      - Pipeline metrics (summary)      |
+|                                                                     |
+|    GET  /api/events               - List events                     |
+|    GET  /api/events/:id           - Get event                       |
+|    POST /api/events/:id/accept    - Accept event                    |
+|    POST /api/events/:id/decline   - Decline event                   |
+|    POST /api/events/:id/snooze    - Snooze event                    |
+|    POST /api/events/:id/complete  - Complete event                  |
+|    DEL  /api/events/:id           - Delete event                    |
+|                                                                     |
+|    GET  /api/messages             - List messages                   |
+|    GET  /api/contacts             - List contacts                   |
+|    GET  /api/logs                 - List pipeline logs              |
+|    GET  /api/logs/:step           - Get specific log                |
+|    GET  /api/pipeline/:messageId  - Get pipeline data for message   |
+|                                                                     |
+|    GET  /api/archive              - List archives                   |
+|    POST /api/archive              - Trigger manual archive          |
+|                                                                     |
+|  Auto-Learning API:                                                 |
+|    GET  /api/learning/stats       - Pattern learning statistics     |
+|    GET  /api/learning/patterns    - List learned patterns           |
+|    GET  /api/learning/logs        - LLM extraction logs             |
+|    POST /api/learning/run         - Trigger pattern learning        |
+|    DEL  /api/learning/patterns/:id - Deactivate pattern             |
++=====================================================================+
     `);
   });
 }

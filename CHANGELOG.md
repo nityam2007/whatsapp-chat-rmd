@@ -5,6 +5,45 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.0] - 2026-02-03
+
+### Changed - Gemini 2.5 Flash + Improved Dashboard
+
+#### LLM Update
+- **Upgraded to Gemini 2.5 Flash** (`gemini-2.5-flash`) for classification and extraction
+- Gemini 2.5 Flash offers improved performance and accuracy over 2.0
+
+#### Improved Webapp Dashboard
+Complete redesign of the webapp with a professional, clean UI:
+
+- **No emojis** - Clean, professional interface using SVG icons
+- **Auto-refresh** - Dashboard auto-refreshes every 10 seconds with countdown indicator
+- **Event management** - Full Accept/Decline/Snooze/Complete workflow for all event statuses
+- **Metrics page** - New page showing pipeline performance metrics
+- **Better status filtering** - Filter events by `pending_confirmation`, `snoozed`, etc.
+- **Source message display** - Shows original WhatsApp message that created each event
+- **Improved typography** - Better readability with proper font sizing and spacing
+
+#### New Webapp Features
+- **Snooze endpoint** - Added `/api/events/:id/snooze` proxy
+- **Metrics endpoints** - Added `/api/metrics` and `/api/metrics/summary` proxies
+- **Status badge colors** - Distinct colors for each event status
+
+#### Technical Changes
+- Updated version to 0.7.0 in server health endpoint
+- Removed box-drawing Unicode characters from server banners (compatibility)
+- All 237 tests passing
+
+#### Files Modified
+```
+.env                           # Updated GEMINI_MODEL to gemini-2.5-flash
+webapp/public/index.html       # Complete redesign - professional UI
+webapp/server.ts               # Added snooze and metrics proxy endpoints
+src/server.ts                  # Updated version and banner
+```
+
+---
+
 ## [0.6.0] - 2026-02-03
 
 ### Added - Pending Confirmation Feature

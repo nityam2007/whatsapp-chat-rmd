@@ -318,6 +318,15 @@ app.post('/api/events/:id/complete', async (req, res) => {
   }
 });
 
+app.post('/api/events/:id/snooze', async (req, res) => {
+  try {
+    const data = await proxyToRMD(`/api/events/${req.params.id}/snooze`, 'POST');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to snooze event' });
+  }
+});
+
 app.delete('/api/events/:id', async (req, res) => {
   try {
     const data = await proxyToRMD(`/api/events/${req.params.id}`, 'DELETE');
@@ -369,6 +378,25 @@ app.get('/api/logs/:step', async (req, res) => {
   }
 });
 
+// Metrics
+app.get('/api/metrics', async (_req, res) => {
+  try {
+    const data = await proxyToRMD('/api/metrics');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch metrics' });
+  }
+});
+
+app.get('/api/metrics/summary', async (_req, res) => {
+  try {
+    const data = await proxyToRMD('/api/metrics/summary');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch metrics summary' });
+  }
+});
+
 // =============================================
 // Health & Static Routes
 // =============================================
@@ -398,20 +426,20 @@ app.get('{*path}', (_req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`
-╔═══════════════════════════════════════════════════════════════════╗
-║              WhatsApp RMD Dashboard & Push Webapp                 ║
-╠═══════════════════════════════════════════════════════════════════╣
-║  Dashboard:    http://localhost:${String(PORT).padEnd(5)}                              ║
-║  RMD API:      ${RMD_API_URL.padEnd(50)}║
-║  VAPID:        ${vapidPublicKey ? '✅ Configured' : '❌ Not configured'}                                    ║
-║  Subscriptions: ${String(subscriptions.size).padEnd(49)}║
-╠═══════════════════════════════════════════════════════════════════╣
-║  Features:                                                        ║
-║    • Dashboard with stats and upcoming events                     ║
-║    • Event management (accept/decline/complete)                   ║
-║    • Message history viewer                                       ║
-║    • Pipeline logs viewer                                         ║
-║    • Push notification management                                 ║
-╚═══════════════════════════════════════════════════════════════════╝
++=====================================================================+
+|                   Argus Dashboard & Webapp v0.7.0                   |
++=====================================================================+
+|  Dashboard:     http://localhost:${String(PORT).padEnd(5)}                              |
+|  RMD API:       ${RMD_API_URL.padEnd(50)}|
+|  VAPID:         ${vapidPublicKey ? 'Configured' : 'Not configured'}                                        |
+|  Subscriptions: ${String(subscriptions.size).padEnd(49)}|
++---------------------------------------------------------------------+
+|  Features:                                                          |
+|    - Dashboard with stats and upcoming events                       |
+|    - Event management (accept/decline/snooze/complete)              |
+|    - Message history viewer                                         |
+|    - Pipeline metrics and logs                                      |
+|    - Push notification management                                   |
++=====================================================================+
   `);
 });
