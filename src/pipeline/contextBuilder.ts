@@ -4,12 +4,18 @@
  * Aggregates conversation context for LLM extraction.
  * Fetches recent messages from the same chat.
  * Includes sender/receiver context for proper event attribution.
+ * 
+ * ENHANCED WITH SEMANTIC CONTEXT:
+ * - Finds semantically similar past messages
+ * - Includes examples of successful event extractions
+ * - Provides richer context for extraction accuracy
  */
 
 import { StoredMessage, MessageContext } from '../types/index.js';
 import { getDatabase, getContactName } from '../database/sqlite.js';
 import { countTokens } from './tokenCompressor.js';
 import logger from '../utils/logger.js';
+import { findSimilarMessages, initSemanticSearch } from '../vector/semanticSearch.js';
 
 const CONTEXT_WINDOW_SIZE = 10; // Number of recent messages to include
 
@@ -22,19 +28,30 @@ export interface EnrichedContext extends MessageContext {
   senderIsMe: boolean;
   chatParticipants: string[];
   contactName: string | null;
+  semanticExamples?: Array<{
+    content: string;
+    classification: string;
+    similarity: number;
+    eventId?: string;
+  }>;
 }
 
 /**
  * Builds enriched context from recent messages in the chat
+ * 
+ * ENHANCED: Optionally includes semantically similar past messages
+ * that led to successful event extractions
  */
 export async function buildContext(
   currentMessage: StoredMessage,
-  windowSize: number = CONTEXT_WINDOW_SIZE
+  windowSize: number = CONTEXT_WINDOW_SIZE,
+  includeSemanticExamples: boolean = true
 ): Promise<EnrichedContext> {
   logger.debug('Building context', {
     messageId: currentMessage.id,
     chatId: currentMessage.chat_id,
     windowSize,
+    includeSemanticExamples,
   });
 
   const db = getDatabase();
@@ -75,12 +92,38 @@ export async function buildContext(
     : (currentMessage.sender || getContactName(currentMessage.chat_id));
   const senderIsMe = currentMessage.is_from_me === true;
 
+  // Get semantic examples if requested
+  let semanticExamples: EnrichedContext['semanticExamples'] = [];
+  if (includeSemanticExamples) {
+    try {
+      await initSemanticSearch();
+      const similarMessages = await findSimilarMessages(currentMessage.content, 3, 0.6, true);
+      
+      semanticExamples = similarMessages.map(m => ({
+        content: m.content,
+        classification: m.classification || 'unknown',
+        similarity: m.similarity,
+        eventId: m.eventId,
+      }));
+      
+      if (semanticExamples.length > 0) {
+        logger.debug('Found semantic examples for context', {
+          count: semanticExamples.length,
+          topSimilarity: semanticExamples[0]?.similarity,
+        });
+      }
+    } catch (error) {
+      logger.warn('Failed to get semantic examples', { error });
+    }
+  }
+
   logger.debug('Context built', {
     messageCount: recentMessages.length,
     tokenCount,
     sender,
     senderIsMe,
     participants: chatParticipants,
+    semanticExamplesCount: semanticExamples.length,
   });
 
   return {
@@ -92,12 +135,15 @@ export async function buildContext(
     senderIsMe,
     chatParticipants,
     contactName,
+    semanticExamples,
   };
 }
 
 /**
  * Formats enriched context for LLM input
  * Includes sender/receiver info, participants, and marks the current message
+ * 
+ * ENHANCED: Includes semantic examples from similar past messages
  * 
  * IMPORTANT: Each chat is isolated. Messages from different chats are NEVER mixed.
  * The chat_id uniquely identifies the conversation.
@@ -117,6 +163,17 @@ export function formatContextForLLM(context: EnrichedContext): string {
   lines.push('');
   lines.push('NOTE: This is an isolated conversation. All messages below are from THIS chat only.');
   lines.push('Messages from other chats are NOT included.');
+  
+  // Add semantic examples if available
+  if (context.semanticExamples && context.semanticExamples.length > 0) {
+    lines.push('');
+    lines.push('=== SIMILAR PAST MESSAGES (for reference) ===');
+    lines.push('These similar messages led to successful event extractions:');
+    for (const example of context.semanticExamples) {
+      lines.push(`- "${example.content.slice(0, 100)}" (classified as: ${example.classification}, similarity: ${(example.similarity * 100).toFixed(0)}%)`);
+    }
+  }
+  
   lines.push('');
   lines.push('=== MESSAGE HISTORY (Last 10 messages from this chat) ===');
   

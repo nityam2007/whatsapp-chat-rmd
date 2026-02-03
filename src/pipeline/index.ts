@@ -3,16 +3,22 @@
  * 
  * Coordinates the full message processing pipeline with detailed logging.
  * 
+ * ENHANCED WITH SEMANTIC LEARNING:
+ * - Stores embeddings for messages that create events
+ * - Learns patterns from successful extractions
+ * - Uses semantic similarity for improved accuracy
+ * 
  * PIPELINE FLOW:
  * 1. Store raw message FIRST (always save all data)
  * 2. Check for duplicate processing (message_id deduplication)
- * 3. Heuristic Gate (save result)
- * 4. AI Classification (save result)
- * 5. Context Building
+ * 3. Heuristic Gate (save result) - with optional semantic boost
+ * 4. AI Classification (save result) - with few-shot examples
+ * 5. Context Building - with semantic examples
  * 6. Token Compression (if needed)
  * 7. AI Extraction (save result)
  * 8. Event Routing (with FAISS deduplication)
- * 9. Mark pipeline complete
+ * 9. Store message embedding for learning
+ * 10. Mark pipeline complete
  */
 
 import { StoredMessage, StoredEvent } from '../types/index.js';
@@ -27,7 +33,7 @@ import {
   eventExistsForMessage,
   getEventBySourceMessage,
 } from '../database/sqlite.js';
-import { checkHeuristicGate } from './heuristicGate.js';
+import { checkHeuristicGate, checkHeuristicGateWithSemantics } from './heuristicGate.js';
 import { classifyMessage } from './classifier.js';
 import { buildContext, formatContextForLLM } from './contextBuilder.js';
 import { compressIfNeeded } from './tokenCompressor.js';
@@ -46,6 +52,11 @@ import {
   logError,
   PipelineLogContext,
 } from '../utils/pipelineLogger.js';
+import { storeMessageEmbedding, learnPattern } from '../vector/semanticSearch.js';
+
+// Configuration for semantic enhancement
+const USE_SEMANTIC_HEURISTIC = true; // Enable semantic boost for heuristic gate
+const USE_SEMANTIC_LEARNING = true; // Enable learning from successful extractions
 
 /**
  * Processes a message through the full pipeline
@@ -120,10 +131,26 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
     logger.debug('Message stored', { messageId: message.id });
 
     // =====================================
-    // Step 3: Heuristic Gate (save result regardless of outcome)
+    // Step 3: Heuristic Gate (with optional semantic boost)
     // =====================================
     timer.mark('heuristic_start');
-    const heuristicResult = checkHeuristicGate(message.content);
+    
+    // Use semantic-enhanced heuristic gate for better accuracy
+    let heuristicResult;
+    let usedSemanticBoost = false;
+    
+    if (USE_SEMANTIC_HEURISTIC) {
+      try {
+        heuristicResult = await checkHeuristicGateWithSemantics(message.content);
+        usedSemanticBoost = !!(heuristicResult as any).semanticBoost;
+      } catch (error) {
+        logger.warn('Semantic heuristic failed, using basic', { error });
+        heuristicResult = checkHeuristicGate(message.content);
+      }
+    } else {
+      heuristicResult = checkHeuristicGate(message.content);
+    }
+    
     timer.mark('heuristic_end');
     const heuristicDuration = timer.duration('heuristic_start', 'heuristic_end');
     
@@ -143,6 +170,9 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
         score: heuristicResult.score, 
         signalCount: heuristicResult.signals.length,
         topSignals: heuristicResult.signals.slice(0, 5),
+        usedSemanticBoost,
+        semanticBoost: (heuristicResult as any).semanticBoost,
+        semanticCategory: (heuristicResult as any).semanticCategory,
       },
       duration_ms: heuristicDuration,
     });
@@ -497,6 +527,53 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
         metrics.recordEventCreated();
       } else if (extractedEvent.event_type === 'update_event') {
         metrics.recordEventUpdated();
+      }
+      
+      // =====================================
+      // Step 11: Semantic Learning (store embedding for future similarity)
+      // =====================================
+      if (USE_SEMANTIC_LEARNING) {
+        try {
+          // Store message embedding for future similarity searches
+          await storeMessageEmbedding(
+            message.id,
+            message.chat_id,
+            message.content,
+            extractedEvent.event_type,
+            true, // createdEvent
+            storedEvent.id
+          );
+          
+          // Learn pattern from successful extraction
+          // Determine category based on event type
+          let category: 'event' | 'reminder' | 'deadline' | 'meeting' | 'update' | 'cancel' = 'event';
+          const titleLower = (extractedEvent.title || '').toLowerCase();
+          if (extractedEvent.event_type === 'update_event') {
+            category = 'update';
+          } else if (titleLower.includes('remind') || titleLower.includes('don\'t forget')) {
+            category = 'reminder';
+          } else if (titleLower.includes('deadline') || titleLower.includes('due')) {
+            category = 'deadline';
+          } else if (titleLower.includes('meeting') || titleLower.includes('call') || titleLower.includes('sync')) {
+            category = 'meeting';
+          }
+          
+          await learnPattern(
+            message.content,
+            category,
+            extractedEvent.event_type,
+            extractedEvent.confidence
+          );
+          
+          logger.debug('Stored semantic learning data', {
+            messageId: message.id,
+            eventId: storedEvent.id,
+            category,
+          });
+        } catch (error) {
+          logger.warn('Failed to store semantic learning data', { error });
+          // Don't fail the pipeline for learning errors
+        }
       }
       
       // Log routing

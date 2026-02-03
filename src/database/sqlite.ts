@@ -316,6 +316,50 @@ function runMigrations(db: Database.Database): void {
   // Initialize pattern learning tables (auto-learning system)
   initPatternLearningTablesInternal(db);
 
+  // Create message_embeddings table for semantic search
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS message_embeddings (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL UNIQUE,
+      chat_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      embedding BLOB NOT NULL,
+      embedding_model TEXT DEFAULT 'text-embedding-3-small',
+      classification TEXT,
+      created_event INTEGER DEFAULT 0,
+      event_id TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (message_id) REFERENCES messages(id),
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_message_embeddings_message_id ON message_embeddings(message_id);
+    CREATE INDEX IF NOT EXISTS idx_message_embeddings_chat_id ON message_embeddings(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_message_embeddings_classification ON message_embeddings(classification);
+    CREATE INDEX IF NOT EXISTS idx_message_embeddings_created_event ON message_embeddings(created_event);
+  `);
+
+  // Create semantic_patterns table for pattern matching
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS semantic_patterns (
+      id TEXT PRIMARY KEY,
+      text TEXT NOT NULL,
+      embedding BLOB NOT NULL,
+      embedding_model TEXT DEFAULT 'text-embedding-3-small',
+      category TEXT NOT NULL,
+      classification TEXT NOT NULL,
+      confidence REAL DEFAULT 0.7,
+      hit_count INTEGER DEFAULT 0,
+      last_used TEXT,
+      is_seed INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_semantic_patterns_category ON semantic_patterns(category);
+    CREATE INDEX IF NOT EXISTS idx_semantic_patterns_classification ON semantic_patterns(classification);
+    CREATE INDEX IF NOT EXISTS idx_semantic_patterns_hit_count ON semantic_patterns(hit_count);
+  `);
+
   logger.info('Database migrations completed');
 }
 
@@ -2293,6 +2337,299 @@ export function deleteContactAndData(contactId: string): {
   }
 }
 
+// ============================================================================
+// MESSAGE EMBEDDINGS FOR SEMANTIC SEARCH
+// ============================================================================
+
+export interface StoredMessageEmbedding {
+  id: string;
+  message_id: string;
+  chat_id: string;
+  content: string;
+  embedding: number[];
+  embedding_model: string;
+  classification?: string;
+  created_event: boolean;
+  event_id?: string;
+  created_at: string;
+}
+
+/**
+ * Store a message embedding for semantic search
+ */
+export function storeMessageEmbedding(
+  messageId: string,
+  chatId: string,
+  content: string,
+  embedding: number[],
+  classification?: string,
+  createdEvent: boolean = false,
+  eventId?: string
+): void {
+  const db = dbInstance || initDatabase();
+  const id = `emb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const now = getISTTimestamp();
+  
+  // Convert embedding array to Buffer for storage
+  const embeddingBuffer = Buffer.from(new Float32Array(embedding).buffer);
+  
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO message_embeddings 
+    (id, message_id, chat_id, content, embedding, classification, created_event, event_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  
+  stmt.run(
+    id,
+    messageId,
+    chatId,
+    content,
+    embeddingBuffer,
+    classification || null,
+    createdEvent ? 1 : 0,
+    eventId || null,
+    now
+  );
+  
+  logger.debug('Message embedding stored', { messageId, classification, createdEvent });
+}
+
+/**
+ * Get a message embedding by message ID
+ */
+export function getMessageEmbedding(messageId: string): StoredMessageEmbedding | null {
+  const db = dbInstance || initDatabase();
+  const stmt = db.prepare('SELECT * FROM message_embeddings WHERE message_id = ?');
+  const row = stmt.get(messageId) as Record<string, unknown> | undefined;
+  
+  if (!row) return null;
+  
+  // Convert Buffer back to number array
+  const embeddingBuffer = row.embedding as Buffer;
+  const embedding = Array.from(new Float32Array(embeddingBuffer.buffer, embeddingBuffer.byteOffset, embeddingBuffer.length / 4));
+  
+  return {
+    id: row.id as string,
+    message_id: row.message_id as string,
+    chat_id: row.chat_id as string,
+    content: row.content as string,
+    embedding,
+    embedding_model: row.embedding_model as string,
+    classification: row.classification as string | undefined,
+    created_event: row.created_event === 1,
+    event_id: row.event_id as string | undefined,
+    created_at: row.created_at as string,
+  };
+}
+
+/**
+ * Get all message embeddings (for similarity search)
+ * Optionally filter by whether they created events
+ */
+export function getAllMessageEmbeddings(options?: {
+  onlyWithEvents?: boolean;
+  limit?: number;
+  chatId?: string;
+}): StoredMessageEmbedding[] {
+  const db = dbInstance || initDatabase();
+  const { onlyWithEvents, limit = 1000, chatId } = options || {};
+  
+  let whereClause = '1=1';
+  const params: unknown[] = [];
+  
+  if (onlyWithEvents) {
+    whereClause += ' AND created_event = 1';
+  }
+  
+  if (chatId) {
+    whereClause += ' AND chat_id = ?';
+    params.push(chatId);
+  }
+  
+  const stmt = db.prepare(`
+    SELECT * FROM message_embeddings 
+    WHERE ${whereClause}
+    ORDER BY created_at DESC 
+    LIMIT ?
+  `);
+  
+  const rows = stmt.all(...params, limit) as Record<string, unknown>[];
+  
+  return rows.map(row => {
+    const embeddingBuffer = row.embedding as Buffer;
+    const embedding = Array.from(new Float32Array(embeddingBuffer.buffer, embeddingBuffer.byteOffset, embeddingBuffer.length / 4));
+    
+    return {
+      id: row.id as string,
+      message_id: row.message_id as string,
+      chat_id: row.chat_id as string,
+      content: row.content as string,
+      embedding,
+      embedding_model: row.embedding_model as string,
+      classification: row.classification as string | undefined,
+      created_event: row.created_event === 1,
+      event_id: row.event_id as string | undefined,
+      created_at: row.created_at as string,
+    };
+  });
+}
+
+/**
+ * Update message embedding with event creation result
+ */
+export function updateMessageEmbeddingEvent(messageId: string, eventId: string): void {
+  const db = dbInstance || initDatabase();
+  
+  db.prepare(`
+    UPDATE message_embeddings 
+    SET created_event = 1, event_id = ?
+    WHERE message_id = ?
+  `).run(eventId, messageId);
+  
+  logger.debug('Message embedding updated with event', { messageId, eventId });
+}
+
+/**
+ * Get embedding statistics
+ */
+export function getEmbeddingStats(): {
+  total: number;
+  withEvents: number;
+  byClassification: Record<string, number>;
+} {
+  const db = dbInstance || initDatabase();
+  
+  const total = (db.prepare('SELECT COUNT(*) as count FROM message_embeddings').get() as { count: number }).count;
+  const withEvents = (db.prepare('SELECT COUNT(*) as count FROM message_embeddings WHERE created_event = 1').get() as { count: number }).count;
+  
+  const byClassification: Record<string, number> = {};
+  const classRows = db.prepare(`
+    SELECT classification, COUNT(*) as count 
+    FROM message_embeddings 
+    WHERE classification IS NOT NULL
+    GROUP BY classification
+  `).all() as { classification: string; count: number }[];
+  
+  for (const row of classRows) {
+    byClassification[row.classification] = row.count;
+  }
+  
+  return { total, withEvents, byClassification };
+}
+
+// ============================================================================
+// SEMANTIC PATTERNS FOR PATTERN MATCHING
+// ============================================================================
+
+export interface StoredSemanticPattern {
+  id: string;
+  text: string;
+  embedding: number[];
+  embedding_model: string;
+  category: string;
+  classification: string;
+  confidence: number;
+  hit_count: number;
+  last_used?: string;
+  is_seed: boolean;
+  created_at: string;
+}
+
+/**
+ * Store a semantic pattern
+ */
+export function storeSemanticPattern(
+  text: string,
+  embedding: number[],
+  category: string,
+  classification: string,
+  confidence: number = 0.7,
+  isSeed: boolean = false
+): string {
+  const db = dbInstance || initDatabase();
+  const id = `pat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const now = getISTTimestamp();
+  
+  const embeddingBuffer = Buffer.from(new Float32Array(embedding).buffer);
+  
+  const stmt = db.prepare(`
+    INSERT INTO semantic_patterns 
+    (id, text, embedding, category, classification, confidence, hit_count, last_used, is_seed, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  
+  stmt.run(id, text, embeddingBuffer, category, classification, confidence, 0, now, isSeed ? 1 : 0, now);
+  
+  logger.debug('Semantic pattern stored', { id, category, classification });
+  return id;
+}
+
+/**
+ * Get all semantic patterns
+ */
+export function getAllSemanticPatterns(): StoredSemanticPattern[] {
+  const db = dbInstance || initDatabase();
+  const rows = db.prepare('SELECT * FROM semantic_patterns ORDER BY hit_count DESC').all() as Record<string, unknown>[];
+  
+  return rows.map(row => {
+    const embeddingBuffer = row.embedding as Buffer;
+    const embedding = Array.from(new Float32Array(embeddingBuffer.buffer, embeddingBuffer.byteOffset, embeddingBuffer.length / 4));
+    
+    return {
+      id: row.id as string,
+      text: row.text as string,
+      embedding,
+      embedding_model: row.embedding_model as string,
+      category: row.category as string,
+      classification: row.classification as string,
+      confidence: row.confidence as number,
+      hit_count: row.hit_count as number,
+      last_used: row.last_used as string | undefined,
+      is_seed: row.is_seed === 1,
+      created_at: row.created_at as string,
+    };
+  });
+}
+
+/**
+ * Update pattern hit count
+ */
+export function updatePatternHitCount(patternId: string): void {
+  const db = dbInstance || initDatabase();
+  const now = getISTTimestamp();
+  
+  db.prepare(`
+    UPDATE semantic_patterns 
+    SET hit_count = hit_count + 1, last_used = ?
+    WHERE id = ?
+  `).run(now, patternId);
+}
+
+/**
+ * Update pattern confidence
+ */
+export function updatePatternConfidence(patternId: string, confidence: number): void {
+  const db = dbInstance || initDatabase();
+  
+  db.prepare('UPDATE semantic_patterns SET confidence = ? WHERE id = ?').run(confidence, patternId);
+}
+
+/**
+ * Clean up old unused patterns
+ */
+export function cleanupOldPatterns(maxAgeDays: number = 30): number {
+  const db = dbInstance || initDatabase();
+  const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+  
+  const result = db.prepare(`
+    DELETE FROM semantic_patterns 
+    WHERE is_seed = 0 AND hit_count = 0 AND created_at < ?
+  `).run(cutoff);
+  
+  logger.info('Cleaned up old patterns', { deleted: result.changes });
+  return result.changes;
+}
+
 export default { 
   initDatabase, 
   getDatabase, 
@@ -2355,4 +2692,16 @@ export default {
   // Cleanup functions
   cleanupTestData,
   deleteContactAndData,
+  // Message embeddings for semantic search
+  storeMessageEmbedding,
+  getMessageEmbedding,
+  getAllMessageEmbeddings,
+  updateMessageEmbeddingEvent,
+  getEmbeddingStats,
+  // Semantic patterns
+  storeSemanticPattern,
+  getAllSemanticPatterns,
+  updatePatternHitCount,
+  updatePatternConfidence,
+  cleanupOldPatterns,
 };

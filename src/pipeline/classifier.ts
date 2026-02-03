@@ -4,6 +4,11 @@
  * Uses a small, fast LLM for initial classification of messages
  * into event types. Minimal token usage.
  * 
+ * ENHANCED WITH SEMANTIC FEW-SHOT LEARNING:
+ * - Finds similar past messages using embeddings
+ * - Includes their classifications as examples for the LLM
+ * - Improves accuracy through real-world examples
+ * 
  * LOGGING: This module logs ALL LLM calls to database and log files.
  */
 
@@ -13,6 +18,7 @@ import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
 import { storeLLMCall } from '../database/sqlite.js';
 import { logLLM, logError, logSuccess, logWarn } from '../utils/loudLogger.js';
+import { getFewShotExamples, initSemanticSearch } from '../vector/semanticSearch.js';
 
 const CLASSIFICATION_PROMPT = `You are a message classifier. Classify the following message into ONE of these categories:
 - new_event: Message describes a new event, meeting, appointment, reminder, DEADLINE, due date, task, or anything with a time/date reference
@@ -46,9 +52,28 @@ Respond with ONLY a JSON object in this exact format:
 {"event_type": "category", "confidence": 0.0}
 
 Where confidence is a number between 0 and 1.
-
-Message to classify:
 `;
+
+// Dynamic prompt with few-shot examples
+function buildClassificationPrompt(content: string, fewShotExamples?: Array<{ message: string; classification: string; similarity: number }>): string {
+  let prompt = CLASSIFICATION_PROMPT;
+  
+  // Add semantic few-shot examples if available
+  if (fewShotExamples && fewShotExamples.length > 0) {
+    prompt += '\nREAL EXAMPLES from similar past messages:\n';
+    for (const example of fewShotExamples) {
+      // Only include high-similarity examples
+      if (example.similarity >= 0.6) {
+        prompt += `- "${example.message.slice(0, 100)}" → ${example.classification}\n`;
+      }
+    }
+    prompt += '\n';
+  }
+  
+  prompt += `Message to classify:\n${content}`;
+  
+  return prompt;
+}
 
 let openaiClient: OpenAI | null = null;
 let geminiClient: OpenAI | null = null;
@@ -103,9 +128,10 @@ function getLLMClient(): { client: OpenAI; model: string; provider: string } {
 /**
  * Classifies a message using the small LLM
  * 
+ * ENHANCED: Uses semantic few-shot examples from similar past messages
  * LOGS: All inputs and outputs are logged to database and files
  */
-export async function classifyMessage(content: string, messageId?: string): Promise<ClassificationResult> {
+export async function classifyMessage(content: string, messageId?: string, _chatId?: string): Promise<ClassificationResult> {
   const startTime = Date.now();
   const msgId = messageId || 'unknown';
   
@@ -120,7 +146,24 @@ export async function classifyMessage(content: string, messageId?: string): Prom
   }
 
   const { client, model, provider } = getLLMClient();
-  const fullPrompt = CLASSIFICATION_PROMPT + content;
+  
+  // Get semantic few-shot examples for improved accuracy
+  let fewShotExamples: Array<{ message: string; classification: string; similarity: number }> = [];
+  try {
+    await initSemanticSearch();
+    fewShotExamples = await getFewShotExamples(content, 3);
+    if (fewShotExamples.length > 0) {
+      logger.debug('Found few-shot examples', { 
+        count: fewShotExamples.length, 
+        topSimilarity: fewShotExamples[0]?.similarity 
+      });
+    }
+  } catch (error) {
+    logger.warn('Failed to get few-shot examples', { error });
+  }
+  
+  // Build prompt with few-shot examples
+  const fullPrompt = buildClassificationPrompt(content, fewShotExamples);
   
   try {
     // Log the API call start
