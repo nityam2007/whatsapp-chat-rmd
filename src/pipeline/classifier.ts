@@ -20,38 +20,46 @@ import { storeLLMCall } from '../database/sqlite.js';
 import { logLLM, logError, logSuccess, logWarn } from '../utils/loudLogger.js';
 import { getFewShotExamples, initSemanticSearch } from '../vector/semanticSearch.js';
 
-const CLASSIFICATION_PROMPT = `You are a message classifier. Classify the following message into ONE of these categories:
-- new_event: Message describes a new event, meeting, appointment, reminder, DEADLINE, due date, task, or anything with a time/date reference
-- update_event: Message updates or changes an existing event (time, location, etc.) - includes time-only messages that likely refer to a previous event
-- signal_event: Message is a trigger or condition for a pending event (e.g., "I've arrived", "meeting is done")
-- irrelevant: Message is casual chat with NO time, date, deadline, or scheduling information
+const CLASSIFICATION_PROMPT = `You are a STRICT message classifier for a reminder/calendar system. Your job is to identify messages that describe SCHEDULABLE events.
 
-IMPORTANT: If a message mentions ANY date, time, deadline, or due date, it is likely new_event or update_event, NOT irrelevant.
+IMPORTANT RULES:
+1. A message is ONLY an event if it has a SPECIFIC time, date, or deadline
+2. Vague requests without time ("send email", "pay amount") are NOT events - they are just tasks
+3. Acknowledgments ("Done", "Ok", "Ha bhai") are ALWAYS irrelevant
+4. Casual conversation about work/money without scheduling is irrelevant
+5. Be CONSERVATIVE - when in doubt, classify as irrelevant
 
-Examples of new_event:
+Categories:
+- new_event: Message has a SPECIFIC date/time/deadline (e.g., "meeting tomorrow at 3pm", "deadline Feb 8", "call me at 5")
+- update_event: Updates an existing event's time/date (e.g., "make it 5pm instead", "postponed to tomorrow")
+- signal_event: Completion trigger with clear context (e.g., "meeting is done, start the next task")
+- irrelevant: Everything else - casual chat, acknowledgments, vague requests, general discussion
+
+Examples of new_event (HAS specific time/date):
 - "Meeting tomorrow at 3pm" → new_event
-- "Deadline is February 8" → new_event
-- "Project due next week" → new_event
-- "Reminder to call mom" → new_event
+- "Deadline is February 8" → new_event  
+- "Call me at 5 baje" → new_event
+- "Kal 10 baje milte hai" → new_event
+
+Examples of irrelevant (NO specific time/date):
+- "Done" → irrelevant (just acknowledgment)
+- "Ok kale payment thai jase" → irrelevant (vague, no specific time)
+- "Email mokal" → irrelevant (no time specified)
+- "5 month nu kari de" → irrelevant (duration, not a specific date/time)
+- "Payment ketlu thase?" → irrelevant (question about amount)
+- "Ha bhai" → irrelevant (acknowledgment)
+- "Theek che" → irrelevant (acknowledgment)
 
 Examples of update_event:
-- "Let's make it 5pm instead" → update_event
-- "now at 5 PM" → update_event (likely updating a previous event)
-- "postponed to tomorrow" → update_event
-- "changed to 10am" → update_event
-- "actually 3pm" → update_event
+- "Actually 5pm nahi 6pm" → update_event
+- "Postponed to next week" → update_event
+- "Changed to Monday" → update_event
 
-Examples of irrelevant:
-- "Ok sounds good" → irrelevant
-- "How are you?" → irrelevant
-- "Thanks!" → irrelevant
+Examples of signal_event (RARE - needs clear trigger context):
+- "I've arrived at office, start the backup" → signal_event
+- "Meeting finished, send the notes" → signal_event
 
-CRITICAL: Short messages containing just a time (like "5pm", "now at 5 PM", "today 10am") are LIKELY update_event because they're usually responding to a previous scheduling discussion. Do NOT classify them as irrelevant.
-
-Respond with ONLY a JSON object in this exact format:
-{"event_type": "category", "confidence": 0.0}
-
-Where confidence is a number between 0 and 1.
+Respond with ONLY a JSON object: {"event_type": "category", "confidence": 0.0}
 `;
 
 // Dynamic prompt with few-shot examples
@@ -342,16 +350,29 @@ function parseClassificationResponse(response: string): ClassificationResult {
 /**
  * Fallback classification when LLM is unavailable
  * Uses comprehensive keyword-based heuristics
+ * NOW MORE CONSERVATIVE - requires specific time/date for events
  */
 function fallbackClassification(content: string): ClassificationResult {
   logWarn('CLASSIFIER', 'Using fallback (keyword-based) classification', { content: content.slice(0, 50) });
   
   const lower = content.toLowerCase();
+  
+  // STRICT: Single word or very short acknowledgments are ALWAYS irrelevant
+  const acknowledgments = [
+    'done', 'ok', 'okay', 'yes', 'no', 'sure', 'ha', 'haan', 'nai', 'nahi',
+    'theek', 'sahi', 'accha', 'cool', 'nice', 'great', 'perfect', 'fine',
+    'bas', 'chalo', 'chal', 'hmm', 'ohh', 'ahh', 'wow', 'thanks', 'thx',
+  ];
+  
+  const cleanContent = lower.replace(/[.!?,]/g, '').trim();
+  if (acknowledgments.includes(cleanContent) || cleanContent.length < 5) {
+    return { event_type: 'irrelevant', confidence: 0.95 };
+  }
 
   // Check for cancel/update signals FIRST (highest priority)
   const cancelKeywords = [
     'cancel', 'cancelled', 'canceled', 'cancelling',
-    'skip', 'drop', 'abort', 'call off',
+    'skip', 'abort', 'call off',
     'not happening', 'won\'t happen', 'wont happen',
     'forget about', 'never mind', 'nevermind',
   ];
@@ -361,92 +382,51 @@ function fallbackClassification(content: string): ClassificationResult {
 
   // Check for reschedule/update signals
   const updateKeywords = [
-    'change', 'update', 'move to', 'moved to', 'shift to',
-    'reschedule', 'postpone', 'delay', 'push to',
+    'change to', 'update to', 'move to', 'moved to', 'shift to',
+    'reschedule', 'postpone to', 'delay to', 'push to',
     'new time', 'new date', 'different time', 'different date',
-    'instead of', 'actually', 'correction',
+    'instead of', 'actually at', 'correction',
   ];
   if (updateKeywords.some(k => lower.includes(k))) {
     return { event_type: 'update_event', confidence: 0.65 };
   }
 
-  // Check for signal/trigger keywords
-  const signalKeywords = [
-    'arrived', 'i\'m here', 'im here', 'reached',
-    'done', 'finished', 'completed', 'over',
-    'starting', 'started', 'beginning',
-    'ready', 'all set', 'good to go',
+  // Time patterns (regex) - REQUIRED for event classification
+  const specificTimePatterns = [
+    /\d{1,2}[:\.\-]\d{2}\s*(am|pm)?/i,           // 10:30, 10.30 AM
+    /\d{1,2}\s*(am|pm|a\.m|p\.m)/i,              // 10am, 10 pm
+    /\d{1,2}\s*o'?clock/i,                        // 3 o'clock
+    /\d{1,2}\s*baje/i,                            // 3 baje (Hindi/Gujarati)
+    /\b(kal|tomorrow|parso)\s+(ko|at)?\s*\d/i,   // kal 3 baje, tomorrow at 5
+    /\b(today|aaj|aaje)\s+(at|ko)?\s*\d/i,       // today at 3
+    /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*\d{1,2}/i, // Dec 25
+    /\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i, // 25 Dec
+    /\d{1,2}\/\d{1,2}/,                           // 12/25
+    /deadline.*(today|tomorrow|kal|parso|\d)/i,   // deadline tomorrow
+    /due.*(today|tomorrow|kal|parso|\d)/i,        // due tomorrow
   ];
-  if (signalKeywords.some(k => lower.includes(k))) {
-    return { event_type: 'signal_event', confidence: 0.5 };
-  }
-
-  // Check for new event keywords (comprehensive list)
+  
+  const hasSpecificTime = specificTimePatterns.some(p => p.test(lower));
+  
+  // Event keywords need to be paired with time for new_event
   const eventKeywords = [
-    // Meetings & calls
-    'meeting', 'call', 'sync', 'catchup', 'catch up', '1:1', 'one on one',
-    // Reminders
-    'remind', 'reminder', 'don\'t forget', 'dont forget', 'remember',
-    // Appointments
-    'appointment', 'schedule', 'book', 'reserve',
-    // Events
-    'event', 'party', 'birthday', 'wedding', 'dinner', 'lunch', 'breakfast',
-    // Tasks
-    'deadline', 'due', 'submit', 'task', 'todo', 'to do', 'to-do',
-    // Errands
-    'bring', 'get', 'buy', 'pick up', 'drop off', 'collect', 'fetch',
-    'pay', 'return', 'deliver', 'send', 'post',
+    'meeting', 'call', 'appointment', 'deadline', 'due',
+    'remind', 'reminder', 'schedule',
   ];
   
-  const timeKeywords = [
-    // Today/tomorrow
-    'today', 'tomorrow', 'tonight', 'morning', 'afternoon', 'evening',
-    'tmrw', 'tmr', 'tomo',
-    // Days
-    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
-    'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
-    // Months
-    'january', 'february', 'march', 'april', 'may', 'june',
-    'july', 'august', 'september', 'october', 'november', 'december',
-    'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
-    // Relative
-    'next', 'this', 'coming', 'at', 'by', 'before', 'after',
-    // Time markers
-    'am', 'pm', 'o\'clock', 'oclock',
-  ];
-  
-  // Time patterns (regex)
-  const timePatterns = [
-    /\d{1,2}[:\.\-]\d{2}/,           // 10:30, 10.30
-    /\d{1,2}\s*(am|pm)/i,            // 10am, 10 pm
-    /\d{1,2}\s*o'?clock/i,           // 3 o'clock
-    /in\s+\d+\s*(hour|min|day)/i,    // in 2 hours
-    /\d{1,2}\/\d{1,2}/,              // 12/25
-  ];
+  const hasEventKeyword = eventKeywords.some(k => lower.includes(k));
 
-  const hasEvent = eventKeywords.some(k => lower.includes(k));
-  const hasTime = timeKeywords.some(k => lower.includes(k));
-  const hasTimePattern = timePatterns.some(p => p.test(lower));
-
-  // Strong confidence if both event word and time reference
-  if (hasEvent && (hasTime || hasTimePattern)) {
-    return { event_type: 'new_event', confidence: 0.7 };
-  }
-  
-  // Medium confidence if has explicit event word
-  if (hasEvent) {
+  // ONLY classify as new_event if there's a SPECIFIC time/date
+  if (hasSpecificTime) {
+    if (hasEventKeyword) {
+      return { event_type: 'new_event', confidence: 0.75 };
+    }
+    // Has time but no event word - could be update or new
     return { event_type: 'new_event', confidence: 0.55 };
   }
   
-  // Medium confidence if has clear time patterns
-  if (hasTimePattern) {
-    return { event_type: 'new_event', confidence: 0.5 };
-  }
-  
-  // Low confidence if just has time words
-  if (hasTime) {
-    return { event_type: 'new_event', confidence: 0.4 };
-  }
+  // Has event keyword but NO specific time - NOT an event (just a vague request)
+  // This is the key change - we don't create events for vague requests
 
   return { event_type: 'irrelevant', confidence: 0.7 };
 }

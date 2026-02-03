@@ -154,10 +154,10 @@ const SIGNAL_KEYWORDS = {
     'return', 'retrn', 'submit', 'submitt', 'send', 'snd', 'deliver', 'delivr', 'post', 'courier',
     'pay', 'paymnt', 'payment', 'transfer', 'deposit', 'withdraw',
     'clean', 'wash', 'iron', 'cook', 'prepare', 'make',
-    // Status changes
-    'start', 'begin', 'end', 'finish', 'complete', 'done',
+    // Status changes (be careful - these are often used as acknowledgments)
+    'start', 'begin', 'end', 'finish', 'complete',  // Removed 'done' - too casual
     'cancel', 'cancelled', 'canceled', 'postpone', 'postponed', 'reschedule', 'rescheduled',
-    'skip', 'drop', 'abort', 'call off',
+    'skip', 'abort', 'call off',  // Removed 'drop' - too casual
     // Compound actions
     'need to', 'have to', 'got to', 'gotta', 'gonna', 'should', 'must', 'will',
     'want to', 'wanna', 'planning to', 'going to',
@@ -416,10 +416,45 @@ const WEAK_KEYWORDS = [
 
 // Negative patterns (things that look like events but aren't)
 const NEGATIVE_PATTERNS = [
-  /^(ok|okay|yes|no|sure|maybe|thanks|hi|hello|hey|bye|lol|haha|cool|nice)\.?$/i,  // Single word responses
+  /^(ok|okay|yes|no|sure|maybe|thanks|hi|hello|hey|bye|lol|haha|cool|nice|great|perfect|alright|fine|good|done|hmm|ohh?|ahh?|wow|damn|yaar)\.?!?$/i,  // Single word responses
   /^\d+$/,                                                         // Just a number
-  /^[a-z]{1,3}$/i,                                                // Very short messages
+  /^[a-z]{1,4}$/i,                                                // Very short messages (4 chars or less)
   /\b(meme|joke|funny|video|photo|pic|image|song|music)\b/i,     // Media sharing
+  /^(ha+|he+|lol+|lmao|rofl|xd+|bruh|uff|oops|ohno|damn)\.?!?$/i, // Laughter/exclamations
+  // Gujarati/Hindi casual acknowledgments
+  /^(ha|haa|nai|nahi|che|chhe|haan|naa|theek|thik|sahi|accha|achha|bas|bhai|yaar|dost|arre|are)\.?!?$/i,
+  // Tamil/Telugu/Marathi casual
+  /^(seri|ok|sariga|ho|bara|hoy)\.?!?$/i,
+  // Very short casual phrases
+  /^(ok then|ok done|done deal|all good|no worries|np|nvm|idk|btw|fyi|kk|k+)\.?!?$/i,
+];
+
+// STRICT: Messages that are definitely NOT events (even if they contain event-like words)
+const STRICT_NEGATIVE_PATTERNS = [
+  // Just acknowledgments with common words
+  /^(done|ok done|ho gaya|ho gyu|thai gyu|completed|finished|over|ended)\.?!?$/i,
+  // Payment/money discussions without time (not schedulable)
+  /^(payment|amount|paisa|paise|rupees?|rs\.?|\$|money|cash|online|upi|gpay)\b(?!.*(by|before|until|kal|tomorrow|today|parso))/i,
+  // Questions that are just clarifications
+  /^(what|kya|shu|kem|why|kyu|who|kon|where|kya+n|how much|kitna|ketlu)\s*\?*$/i,
+  // Single emoji or punctuation
+  /^[^\w\s]*$/,
+  // Forwarded/media indicators
+  /^\[?(forwarded|image|video|audio|document|sticker|gif)\]?$/i,
+];
+
+// Short casual phrases that should be rejected
+const CASUAL_PHRASES = [
+  // Gujarati casual
+  'ha bhai', 'ok bhai', 'theek che', 'saru che', 'bahu saru', 'ok ok', 'ha ha',
+  'nai nai', 'kem cho', 'shu che', 'chalta hai', 'chalse', 'chal se', 'haal ne',
+  'sahi che', 'perfect che', 'done che', 'ok che', 'fine che', 'bas bas',
+  // Hindi casual
+  'accha', 'theek hai', 'sahi hai', 'chalo', 'dekh lenge', 'ho jayega', 'kar lenge',
+  'done hai', 'ho gaya', 'haan haan', 'nahi nahi', 'koi nahi', 'koi baat nahi',
+  // English casual
+  'i see', 'oh i see', 'makes sense', 'got it', 'understood', 'noted',
+  'no problem', 'no worries', 'all good', 'sounds good', 'cool cool',
 ];
 
 /**
@@ -511,6 +546,21 @@ function checkHeuristicGateInternal(content: string): HeuristicResult {
       return { hasSignal: false, signals: ['negative_match'], score: -1 };
     }
   }
+  
+  // Check for STRICT negative patterns (definitely not events)
+  for (const pattern of STRICT_NEGATIVE_PATTERNS) {
+    if (pattern.test(normalizedContent)) {
+      return { hasSignal: false, signals: ['strict_negative'], score: -1 };
+    }
+  }
+  
+  // Check for casual phrases (exact or near-exact matches)
+  const contentWords = normalizedContent.replace(/[.!?,]/g, '').trim();
+  for (const phrase of CASUAL_PHRASES) {
+    if (contentWords === phrase || contentWords.startsWith(phrase + ' ') || contentWords.endsWith(' ' + phrase)) {
+      return { hasSignal: false, signals: ['casual_phrase'], score: -1 };
+    }
+  }
 
   // Check for STRONG patterns first (high confidence)
   for (const pattern of STRONG_PATTERNS) {
@@ -573,6 +623,23 @@ function checkHeuristicGateInternal(content: string): HeuristicResult {
   if (hasOnlyWeakKeywords) {
     score = 0;
     return { hasSignal: false, signals: ['weak_only'], score: 0 };
+  }
+  
+  // IMPORTANT: Require at least a time/date reference for short messages
+  // Messages without specific time/date are not schedulable events
+  const hasTimeReference = foundSignals.some(s => 
+    s.startsWith('time:') || 
+    s.startsWith('strong_pattern:') ||
+    s.includes('baje') || 
+    s.includes('kal') || 
+    s.includes('aaj') ||
+    s.includes('tomorrow') ||
+    s.includes('today')
+  );
+  
+  // Short messages (under 30 chars) without time reference are likely casual
+  if (normalizedContent.length < 30 && !hasTimeReference && score < 5) {
+    score = Math.max(0, score - 2);
   }
 
   // Length considerations

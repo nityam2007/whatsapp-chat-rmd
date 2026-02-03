@@ -2630,6 +2630,71 @@ export function cleanupOldPatterns(maxAgeDays: number = 30): number {
   return result.changes;
 }
 
+/**
+ * Get semantic pattern statistics
+ */
+export function getSemanticPatternStats(): {
+  total: number;
+  seedPatterns: number;
+  learnedPatterns: number;
+  byCategory: Record<string, number>;
+  byClassification: Record<string, number>;
+  topPatterns: Array<{ text: string; category: string; hit_count: number }>;
+} {
+  const db = dbInstance || initDatabase();
+  
+  // Check if table exists first
+  const tableExists = db.prepare(`
+    SELECT name FROM sqlite_master WHERE type='table' AND name='semantic_patterns'
+  `).get();
+  
+  if (!tableExists) {
+    return {
+      total: 0,
+      seedPatterns: 0,
+      learnedPatterns: 0,
+      byCategory: {},
+      byClassification: {},
+      topPatterns: [],
+    };
+  }
+  
+  const total = (db.prepare('SELECT COUNT(*) as count FROM semantic_patterns').get() as { count: number }).count;
+  const seedPatterns = (db.prepare('SELECT COUNT(*) as count FROM semantic_patterns WHERE is_seed = 1').get() as { count: number }).count;
+  const learnedPatterns = total - seedPatterns;
+  
+  const byCategory: Record<string, number> = {};
+  const catRows = db.prepare(`
+    SELECT category, COUNT(*) as count 
+    FROM semantic_patterns 
+    GROUP BY category
+  `).all() as { category: string; count: number }[];
+  
+  for (const row of catRows) {
+    byCategory[row.category] = row.count;
+  }
+  
+  const byClassification: Record<string, number> = {};
+  const classRows = db.prepare(`
+    SELECT classification, COUNT(*) as count 
+    FROM semantic_patterns 
+    GROUP BY classification
+  `).all() as { classification: string; count: number }[];
+  
+  for (const row of classRows) {
+    byClassification[row.classification] = row.count;
+  }
+  
+  const topPatterns = db.prepare(`
+    SELECT text, category, hit_count 
+    FROM semantic_patterns 
+    ORDER BY hit_count DESC 
+    LIMIT 10
+  `).all() as Array<{ text: string; category: string; hit_count: number }>;
+  
+  return { total, seedPatterns, learnedPatterns, byCategory, byClassification, topPatterns };
+}
+
 export default { 
   initDatabase, 
   getDatabase, 
@@ -2704,4 +2769,5 @@ export default {
   updatePatternHitCount,
   updatePatternConfidence,
   cleanupOldPatterns,
+  getSemanticPatternStats,
 };

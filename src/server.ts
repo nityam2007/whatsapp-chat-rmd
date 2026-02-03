@@ -38,6 +38,10 @@ import {
   getDatabaseStats,
   cleanupTestData,
   deleteContactAndData,
+  getEmbeddingStats,
+  getSemanticPatternStats,
+  getAllSemanticPatterns,
+  cleanupOldPatterns,
 } from './database/sqlite.js';
 import logger from './utils/logger.js';
 import { metrics } from './utils/metrics.js';
@@ -707,6 +711,74 @@ export function createServer(): Express {
       });
     } catch (error) {
       logger.error('Failed to deactivate pattern', { error, patternId: req.params.patternId });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =============================================
+  // Semantic Search & Embeddings API
+  // =============================================
+  
+  // Get semantic search statistics
+  app.get('/api/semantic/stats', apiAuth, (_req: Request, res: Response) => {
+    try {
+      const embeddings = getEmbeddingStats();
+      const patterns = getSemanticPatternStats();
+      
+      res.json({
+        embeddings,
+        patterns,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to get semantic stats', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+  
+  // Get all semantic patterns
+  app.get('/api/semantic/patterns', apiAuth, (_req: Request, res: Response) => {
+    try {
+      const patterns = getAllSemanticPatterns();
+      
+      // Don't return full embeddings (too large) - just metadata
+      const patternsWithoutEmbeddings = patterns.map(p => ({
+        id: p.id,
+        text: p.text,
+        category: p.category,
+        classification: p.classification,
+        confidence: p.confidence,
+        hit_count: p.hit_count,
+        last_used: p.last_used,
+        is_seed: p.is_seed,
+        created_at: p.created_at,
+      }));
+      
+      res.json({
+        patterns: patternsWithoutEmbeddings,
+        count: patterns.length,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to get semantic patterns', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+  
+  // Cleanup old unused patterns
+  app.post('/api/semantic/cleanup', apiAuth, (req: Request, res: Response) => {
+    try {
+      const maxAgeDays = parseInt(req.query.days as string) || 30;
+      const deleted = cleanupOldPatterns(maxAgeDays);
+      
+      res.json({
+        message: 'Pattern cleanup completed',
+        deleted,
+        maxAgeDays,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to cleanup patterns', { error });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
