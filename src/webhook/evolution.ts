@@ -153,6 +153,7 @@ function payloadToMessage(payload: EvolutionWebhookPayload): StoredMessage | nul
     sender: senderName,
     content,
     timestamp: payload.data.messageTimestamp,
+    is_from_me: isFromMe,  // Track if message is from the user
     processed: false,
     created_at: new Date().toISOString(),
   };

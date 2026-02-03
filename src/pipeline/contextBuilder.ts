@@ -98,6 +98,9 @@ export async function buildContext(
 /**
  * Formats enriched context for LLM input
  * Includes sender/receiver info, participants, and marks the current message
+ * 
+ * IMPORTANT: Each chat is isolated. Messages from different chats are NEVER mixed.
+ * The chat_id uniquely identifies the conversation.
  */
 export function formatContextForLLM(context: EnrichedContext): string {
   if (context.compressed && context.compressedContent) {
@@ -106,31 +109,36 @@ export function formatContextForLLM(context: EnrichedContext): string {
 
   const lines: string[] = [];
   
-  // Add context header with participant info
+  // Add context header with clear chat identification
   lines.push('=== CHAT CONTEXT ===');
-  lines.push(`Chat with: ${context.contactName}`);
-  lines.push(`Participants in this conversation: ${context.chatParticipants.join(', ')}`);
-  lines.push(`Current message sender: ${context.sender}${context.senderIsMe ? ' (this is ME, the user of this system)' : ''}`);
+  lines.push(`Chat ID: ${context.currentMessage.chat_id}`);
+  lines.push(`Chat with: ${context.contactName || 'Unknown Contact'}`);
+  lines.push(`Participants: ${context.chatParticipants.join(', ')}`);
   lines.push('');
-  lines.push('=== MESSAGE HISTORY ===');
+  lines.push('NOTE: This is an isolated conversation. All messages below are from THIS chat only.');
+  lines.push('Messages from other chats are NOT included.');
+  lines.push('');
+  lines.push('=== MESSAGE HISTORY (Last 10 messages from this chat) ===');
   
-  // Format messages
+  // Format messages with clear direction indicator
   const messages = context.messages;
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     const isFromMe = m.is_from_me === true;
     const sender = isFromMe ? 'Me' : (m.sender || context.contactName);
-    const time = new Date(m.timestamp * 1000).toISOString();
+    const time = new Date(m.timestamp * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const direction = isFromMe ? `Me → ${context.contactName}` : `${context.contactName} → Me`;
     const isLast = i === messages.length - 1;
     
     if (isLast) {
       lines.push('');
       lines.push('=== CURRENT MESSAGE (EXTRACT EVENT FROM THIS) ===');
-      lines.push(`Sender: ${sender}${isFromMe ? ' (ME - the user)' : ''}`);
-      lines.push(`Time: ${time}`);
+      lines.push(`Direction: ${direction}`);
+      lines.push(`Sender: ${sender}${isFromMe ? ' (ME - the user of this system)' : ''}`);
+      lines.push(`Time (IST): ${time}`);
       lines.push(`Content: ${m.content}`);
     } else {
-      lines.push(`[${time}] ${sender}: ${m.content}`);
+      lines.push(`[${time}] ${direction}: ${m.content}`);
     }
   }
   

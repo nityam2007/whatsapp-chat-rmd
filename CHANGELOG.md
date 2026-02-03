@@ -5,6 +5,64 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.7] - 2026-02-03
+
+### Fixed - Chat Isolation & Message Direction Tracking
+
+Fixed issue where `is_from_me` flag wasn't being properly stored, and improved context formatting to show clear message direction (who sent to whom).
+
+#### Issues Fixed
+1. **is_from_me not stored**: Messages weren't recording whether they were sent by the user
+2. **Unclear direction**: Context didn't clearly show "Me → Contact" vs "Contact → Me"
+3. **Chat isolation unclear**: LLM might not understand messages are from ONE specific chat
+
+#### Changes
+
+**Database Storage** (`sqlite.ts`):
+- Added `is_from_me` to INSERT statement in `storeMessage()`
+- Added `is_from_me` to returned objects in `getMessage()` and `getRecentMessages()`
+
+**Webhook** (`evolution.ts`):
+- Added `is_from_me: isFromMe` to returned StoredMessage object
+
+**Context Builder** (`contextBuilder.ts`):
+- Added `Chat ID` to context header for clarity
+- Added explicit note: "This is an isolated conversation. Messages from other chats are NOT included."
+- Changed message format to show direction: `[time] Me → Akshat: content`
+- Current message now shows `Direction: Me → Akshat`
+- Times now shown in IST format
+
+#### Example Context (After Fix)
+```
+=== CHAT CONTEXT ===
+Chat ID: 919664833459@s.whatsapp.net
+Chat with: Akshat
+Participants: Me, Akshat
+
+NOTE: This is an isolated conversation. All messages below are from THIS chat only.
+Messages from other chats are NOT included.
+
+=== MESSAGE HISTORY (Last 10 messages from this chat) ===
+[3/2/2026, 10:00:00 pm] Akshat → Me: meeting tomorrow at 10 am
+[3/2/2026, 10:01:00 pm] Me → Akshat: ok
+
+=== CURRENT MESSAGE (EXTRACT EVENT FROM THIS) ===
+Direction: Me → Akshat
+Sender: Me (ME - the user of this system)
+Time (IST): 3/2/2026, 10:30:00 pm
+Content: now at 5 PM
+```
+
+#### Files Modified
+```
+src/webhook/evolution.ts      # Added is_from_me to StoredMessage
+src/database/sqlite.ts        # Store and retrieve is_from_me
+src/pipeline/contextBuilder.ts # Enhanced context format with direction
+CHANGELOG.md                  # This entry
+```
+
+---
+
 ## [0.7.6] - 2026-02-03
 
 ### Fixed - Time-Only Messages Being Dropped

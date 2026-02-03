@@ -370,8 +370,9 @@ export function getDatabase(): IDatabase {
     async storeMessage(message: StoredMessage): Promise<void> {
       const timestampIST = formatISTDate(message.timestamp * 1000);
       const stmt = db.prepare(`
-        INSERT OR REPLACE INTO messages (id, chat_id, sender, sender_name, content, timestamp, timestamp_ist, processed, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO messages 
+        (id, chat_id, sender, sender_name, content, timestamp, timestamp_ist, is_from_me, processed, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
       stmt.run(
@@ -382,11 +383,18 @@ export function getDatabase(): IDatabase {
         message.content,
         message.timestamp,
         timestampIST,
+        message.is_from_me ? 1 : 0,  // Store is_from_me flag
         message.processed ? 1 : 0,
         message.created_at
       );
       
-      logger.debug('Message stored', { id: message.id, timestampIST });
+      logger.debug('Message stored', { 
+        id: message.id, 
+        chatId: message.chat_id,
+        sender: message.sender,
+        isFromMe: message.is_from_me,
+        timestampIST,
+      });
     },
 
     async getMessage(id: string): Promise<StoredMessage | null> {
@@ -401,6 +409,7 @@ export function getDatabase(): IDatabase {
         sender: row.sender as string,
         content: row.content as string,
         timestamp: row.timestamp as number,
+        is_from_me: Boolean(row.is_from_me),  // Include is_from_me
         processed: Boolean(row.processed),
         created_at: row.created_at as string,
       };
@@ -422,6 +431,7 @@ export function getDatabase(): IDatabase {
         sender: row.sender as string,
         content: row.content as string,
         timestamp: row.timestamp as number,
+        is_from_me: Boolean(row.is_from_me),  // Include is_from_me
         processed: Boolean(row.processed),
         created_at: row.created_at as string,
       }));
