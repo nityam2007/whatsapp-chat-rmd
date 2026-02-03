@@ -4,85 +4,72 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-## Quick Start
+## Quick Start (One Command)
 
 ### Prerequisites
 
 - **Node.js 20+** - [Download](https://nodejs.org)
+- **Docker** - [Download](https://docs.docker.com/get-docker/)
 - **OpenAI API Key** - [Get one](https://platform.openai.com/api-keys)
 
-### 1. Install & Setup
+### 1. Clone & Start
 
 ```bash
-# Clone and enter directory
+# Clone the repository
+git clone https://github.com/your-username/WHATSAPP-CHAT-RMD.git
 cd WHATSAPP-CHAT-RMD
 
-# Install dependencies
-npm install
-
-# Copy environment file
+# Copy environment file and add your OpenAI API key
 cp .env.example .env
+nano .env  # Add your OPENAI_API_KEY
 
-# Edit .env and add your OpenAI API key
-nano .env  # or use any editor
-```
-
-### 2. Run (Simple Method)
-
-```bash
-# Make scripts executable
+# Make scripts executable and start everything
 chmod +x scripts/*.sh
-
-# Start all services
 ./scripts/start.sh
 ```
 
-This will:
-- Generate VAPID keys for push notifications
-- Start the Argus API on `http://localhost:3000`
-- Start the Push Notification webapp on `http://localhost:3002`
+**That's it!** The start script will automatically:
+- Install all dependencies (Argus + Evolution API)
+- Start Docker containers (PostgreSQL, Redis)
+- Run database migrations
+- Start all Node.js services
+- Show service status and URLs
 
-### 3. Connect WhatsApp (Optional - for real messages)
+### 2. Connect WhatsApp
 
 ```bash
-# Option A: With Docker (includes Evolution API)
-docker-compose -f docker/docker-compose.yml --profile full up -d
-./scripts/whatsapp-login.sh
-
-# Option B: External Evolution API
-# Edit .env with your Evolution API details, then:
 ./scripts/whatsapp-login.sh
 ```
 
-This will:
-- Create a WhatsApp instance
-- Display a QR code
-- You scan with WhatsApp on your phone
-- Messages are then forwarded to our AI pipeline
+Scan the QR code with your phone's WhatsApp to connect.
 
-### 4. Test It
+### 3. Test It
 
-**Enable Push Notifications:**
-1. Open `http://localhost:3002` in your browser
-2. Click "Enable Push Notifications"
-3. Allow notifications when prompted
+**Open Dashboard:** http://localhost:3002
 
 **Send a Test Message:**
 ```bash
-# Using the script
 ./scripts/test-message.sh "Meeting tomorrow at 3pm with the team"
-
-# Or using curl
-curl -X POST http://localhost:3000/webhook/test \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Remind me to call John at 5pm", "sender": "Test User"}'
 ```
 
-### 5. Stop Services
+### 4. Stop Services
 
 ```bash
-./scripts/stop.sh
+./scripts/stop.sh           # Stop Node.js services only
+./scripts/stop.sh --docker  # Stop everything including Docker
 ```
+
+---
+
+## Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Argus API | http://localhost:3000 | Main AI pipeline |
+| Dashboard | http://localhost:3002 | Web UI for events/messages |
+| Evolution API | http://localhost:8080 | WhatsApp gateway |
+| PostgreSQL | localhost:5432 | Database for Evolution |
+| Redis | localhost:6379 | Cache/queue |
 
 ---
 
