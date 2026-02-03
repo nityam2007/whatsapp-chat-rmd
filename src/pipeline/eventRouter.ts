@@ -92,6 +92,22 @@ export async function routeEvent(
     return existingEvent;
   }
 
+  // =====================================
+  // Smart Update Detection
+  // If LLM says "new_event" but message looks like a time-only update
+  // and there's a recent event in the same chat, treat as update
+  // =====================================
+  if (extractedEvent.event_type === 'new_event') {
+    const shouldBeUpdate = await detectImplicitUpdate(extractedEvent, sourceMessage);
+    if (shouldBeUpdate) {
+      logger.info('Detected implicit update (time-only message with recent event in chat)', {
+        messageContent: sourceMessage.content,
+        extractedTitle: extractedEvent.title,
+      });
+      return handleUpdateEvent(extractedEvent, sourceMessage);
+    }
+  }
+
   switch (extractedEvent.event_type) {
     case 'new_event':
       return handleNewEvent(extractedEvent, sourceMessage, { needsConfirmation });
@@ -107,6 +123,67 @@ export async function routeEvent(
       logger.debug('Event marked as irrelevant, dropping');
       return null;
   }
+}
+
+/**
+ * Detects if a "new_event" should actually be treated as an update
+ * 
+ * Heuristics:
+ * 1. Message is very short (likely just a time update)
+ * 2. Title looks like it's just a time expression (not a real event title)
+ * 3. There's a recent event in the same chat
+ */
+async function detectImplicitUpdate(
+  extracted: ExtractedEvent,
+  sourceMessage: StoredMessage
+): Promise<boolean> {
+  const content = sourceMessage.content.toLowerCase().trim();
+  
+  // Short message with time - likely an update
+  const isShortMessage = content.length < 50;
+  
+  // Check if title is just a time expression (not a real event name)
+  const timeOnlyTitlePatterns = [
+    /^now\s+(today|tomorrow)/i,
+    /^(today|tomorrow)\s+at/i,
+    /^at\s+\d/i,
+    /^\d{1,2}[\s:]*(am|pm)/i,
+    /^(now|ab)\s+\d/i,
+  ];
+  const titleLooksLikeTime = extracted.title && 
+    timeOnlyTitlePatterns.some(p => p.test(extracted.title!));
+  
+  // Check for recent events in the same chat
+  const recentEvents = getRecentEventsByChat(sourceMessage.chat_id, 5);
+  const hasRecentEvent = recentEvents.length > 0;
+  
+  // Check if recent event was created in last 30 minutes
+  const veryRecentEvent = recentEvents.find(e => {
+    const createdAt = new Date(e.created_at).getTime();
+    const thirtyMinsAgo = Date.now() - (30 * 60 * 1000);
+    return createdAt > thirtyMinsAgo;
+  });
+  
+  logger.debug('Implicit update detection', {
+    isShortMessage,
+    titleLooksLikeTime,
+    hasRecentEvent,
+    hasVeryRecentEvent: !!veryRecentEvent,
+    content,
+    title: extracted.title,
+  });
+  
+  // If title looks like just a time AND there's a very recent event, it's an update
+  if (titleLooksLikeTime && veryRecentEvent) {
+    return true;
+  }
+  
+  // If it's a short message, looks like time, and has recent events
+  if (isShortMessage && titleLooksLikeTime && hasRecentEvent) {
+    return true;
+  }
+  
+  return false;
 }
 
 /**

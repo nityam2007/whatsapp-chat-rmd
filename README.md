@@ -4,7 +4,7 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.7.0 | **LLM**: Gemini 3 Flash Preview
+**Current Version**: v0.7.5 | **LLM**: Gemini 3 Flash Preview
 
 ## Quick Start (One Command)
 
@@ -119,7 +119,35 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for comprehensive Mermaid diagr
 - Push Notification Flow
 - Database Schema
 
+For detailed technical documentation of how the pipeline works, see [docs/WORKING.md](docs/WORKING.md).
+
 Individual `.mmd` files in `docs/diagrams/` can be opened in [Mermaid Live Editor](https://mermaid.live)
+
+---
+
+## How Context Works
+
+Argus uses conversational context to understand messages better:
+
+### Context Window
+- **Last 10 messages** from the same chat are included
+- Helps the AI understand if a message is an update or new event
+
+### Example: Implicit Update Detection
+```
+Message 1: "meeting tomorrow at 10 am"  → Creates event
+Message 2: "now today at 10 PM"         → Updates the SAME event (not new!)
+```
+
+The AI detects that message 2 is updating message 1 because:
+1. Both are from the same chat
+2. Message 2 is a time-only statement (no new event name)
+3. There's a recent event from that conversation
+
+### Timezone Handling
+- **All user times are interpreted as IST** (India Standard Time, UTC+5:30)
+- Stored as UTC in database, displayed as IST in webapp
+- Example: "10 AM" → stored as `04:30:00.000Z` (UTC) → shown as "10:00 AM IST"
 
 ---
 

@@ -111,14 +111,27 @@ If the context includes an "EXISTING EVENTS" section, these are events that may 
 - For update_event, the event being updated should match one of the existing events
 
 EVENT TYPE DETECTION:
-- new_event: A completely new event/meeting/appointment being scheduled
+- new_event: A completely NEW event/meeting/appointment being scheduled for the FIRST time
 - update_event: User wants to change time, date, location, or details of an EXISTING event
-  - Keywords: reschedule, postpone, move to, change time, new time, new date, delay
+  - Keywords: reschedule, postpone, move to, change time, new time, new date, delay, now at
   - Example: "Can we move the meeting to 3pm?" → update_event
   - Example: "Let's reschedule to tomorrow" → update_event
   - Example: "Cancel the meeting" → update_event (with status change to cancelled implied)
+  - IMPORTANT: If MESSAGE HISTORY contains a recent event/meeting and the current message
+    provides a NEW TIME without creating a completely new event, this is an UPDATE!
+  - Example flow: "meeting tomorrow at 10am" → [later] → "now today at 10 PM" = update_event
 - signal_event: A trigger/condition for a pending event
 - irrelevant: Casual chat with no scheduling information
+
+CRITICAL RULE FOR UPDATES:
+When deciding between new_event and update_event, check the MESSAGE HISTORY:
+- If there's a recent event mentioned in the same conversation (last 5-6 messages)
+- AND the current message mentions a time change WITHOUT explicitly creating a "new" event
+- Then classify as update_event, NOT new_event
+Example:
+  History: "meeting tomorrow at 10 am" 
+  Current: "now today at 10 PM" → This is UPDATE_EVENT (changing the time)
+  Current: "Let's also have a party at 8 PM" → This is NEW_EVENT (different event)
 
 RULES:
 - Output ONLY valid JSON
@@ -128,9 +141,7 @@ RULES:
 - Times must be ISO-8601 UTC format (ending in Z)
 - Interpret ALL user times as IST, output as UTC
 - DO NOT guess or invent data
-- CRITICAL: Extract from the CURRENT MESSAGE section only
-- Use MESSAGE HISTORY only for context (understanding references)
-- Extract participants from the message content (names mentioned)
+- Extract event details from the CURRENT MESSAGE, but use MESSAGE HISTORY to determine event_type
 - The message sender (from "Sender:" field) should be in created_by
 - For cancel messages, use update_event with the title from the matched existing event
 

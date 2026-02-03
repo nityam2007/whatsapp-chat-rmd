@@ -5,6 +5,73 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.5] - 2026-02-03
+
+### Added - Implicit Update Detection & Technical Documentation
+
+Fixed issue where messages like "now today at 10 PM" were creating new events instead of updating recent events in the same chat.
+
+#### The Problem
+```
+Message 1: "meeting tomorrow at 10 am"  → Creates event (correct)
+Message 2: "now today at 10 PM"         → Creates NEW event (WRONG!)
+```
+
+The LLM classified message 2 as `new_event` because it lacks explicit update keywords like "reschedule" or "postpone".
+
+#### The Solution: Two-Layer Implicit Update Detection
+
+**Layer 1: Enhanced LLM Prompt** (`extractor.ts`)
+- Added explicit instructions for the LLM to check MESSAGE HISTORY
+- If recent event exists in same chat AND current message is time-only → classify as `update_event`
+
+**Layer 2: Post-LLM Heuristic** (`eventRouter.ts`)
+- Added `detectImplicitUpdate()` function that checks:
+  1. Is message short? (<50 chars)
+  2. Does extracted title look like just a time? ("now today at...", "at 3pm")
+  3. Is there a very recent event in the same chat? (last 30 mins)
+- If all conditions met, override `new_event` → `update_event`
+
+#### Example Flow (After Fix)
+```
+"now today at 10 PM"
+  ↓
+LLM: event_type=new_event (still wrong)
+  ↓
+detectImplicitUpdate():
+  - isShortMessage: true
+  - titleLooksLikeTime: true ("Now today at 10 pm")
+  - hasVeryRecentEvent: true (meeting created 5 mins ago)
+  ↓
+Override to update_event
+  ↓
+Find target: most recent event in same chat
+  ↓
+Update event time to 10 PM IST
+```
+
+#### Documentation Added
+- **docs/WORKING.md** - Comprehensive technical documentation explaining:
+  - Complete message flow
+  - Pipeline stages
+  - Event type detection logic
+  - Implicit update detection
+  - IST timezone handling
+  - Context building
+  - FAISS deduplication
+  - Examples with code
+
+#### Files Modified
+```
+src/pipeline/extractor.ts     # Enhanced LLM prompt for update detection
+src/pipeline/eventRouter.ts   # Added detectImplicitUpdate() function
+docs/WORKING.md               # NEW - Full technical documentation
+README.md                     # Added context & timezone info
+CHANGELOG.md                  # This entry
+```
+
+---
+
 ## [0.7.4] - 2026-02-03
 
 ### Fixed - IST Timezone Double-Conversion Bug
