@@ -368,6 +368,15 @@ app.get('/api/logs', async (_req, res) => {
   }
 });
 
+app.get('/api/logs/all', async (_req, res) => {
+  try {
+    const data = await proxyToRMD('/api/logs/all');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch all logs' });
+  }
+});
+
 app.get('/api/logs/:step', async (req, res) => {
   try {
     const lines = req.query.lines || 50;
@@ -375,6 +384,89 @@ app.get('/api/logs/:step', async (req, res) => {
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch logs' });
+  }
+});
+
+app.get('/api/logs/file/:filename', async (req, res) => {
+  try {
+    const lines = req.query.lines || 100;
+    const data = await proxyToRMD(`/api/logs/file/${req.params.filename}?lines=${lines}`);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch log file' });
+  }
+});
+
+// LLM Calls
+app.get('/api/llm-calls', async (req, res) => {
+  try {
+    const queryString = new URLSearchParams(req.query as any).toString();
+    const data = await proxyToRMD(`/api/llm-calls?${queryString}`);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch LLM calls' });
+  }
+});
+
+// Reminders
+app.get('/api/reminders', async (req, res) => {
+  try {
+    const queryString = new URLSearchParams(req.query as any).toString();
+    const data = await proxyToRMD(`/api/reminders?${queryString}`);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch reminders' });
+  }
+});
+
+// Pipeline Logs (DB)
+app.get('/api/pipeline-logs', async (req, res) => {
+  try {
+    const queryString = new URLSearchParams(req.query as any).toString();
+    const data = await proxyToRMD(`/api/pipeline-logs?${queryString}`);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch pipeline logs' });
+  }
+});
+
+// Detailed Messages
+app.get('/api/messages/detailed', async (req, res) => {
+  try {
+    const queryString = new URLSearchParams(req.query as any).toString();
+    const data = await proxyToRMD(`/api/messages/detailed?${queryString}`);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch detailed messages' });
+  }
+});
+
+// Database Stats
+app.get('/api/db/stats', async (_req, res) => {
+  try {
+    const data = await proxyToRMD('/api/db/stats');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch database stats' });
+  }
+});
+
+// Learning/Patterns
+app.get('/api/learning/stats', async (_req, res) => {
+  try {
+    const data = await proxyToRMD('/api/learning/stats');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch learning stats' });
+  }
+});
+
+app.get('/api/learning/patterns', async (_req, res) => {
+  try {
+    const data = await proxyToRMD('/api/learning/patterns');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch patterns' });
   }
 });
 

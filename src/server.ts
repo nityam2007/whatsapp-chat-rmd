@@ -21,6 +21,7 @@ import {
   getEventsByContact, 
   getISTTimestamp,
   getMessages,
+  getMessagesWithPipelineData,
   getEvents,
   getEventById,
   updateEventStatus,
@@ -31,6 +32,10 @@ import {
   archiveOldData,
   getArchiveMetadata,
   getPipelineLogs,
+  getAllPipelineLogs,
+  getLLMCallsPaginated,
+  getReminders,
+  getDatabaseStats,
 } from './database/sqlite.js';
 import logger from './utils/logger.js';
 import { metrics } from './utils/metrics.js';
@@ -741,6 +746,232 @@ export function createServer(): Express {
       });
     } catch (error) {
       logger.error('Failed to get data stats', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =============================================
+  // COMPREHENSIVE DATA API (for dashboard)
+  // =============================================
+
+  // Get database statistics
+  app.get('/api/db/stats', apiAuth, (_req: Request, res: Response) => {
+    try {
+      const stats = getDatabaseStats();
+      res.json({
+        ...stats,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to get database stats', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get LLM calls with pagination
+  app.get('/api/llm-calls', apiAuth, (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const callType = req.query.type as string;
+      const success = req.query.success === 'true' ? true : req.query.success === 'false' ? false : undefined;
+      const messageId = req.query.messageId as string;
+      
+      const result = getLLMCallsPaginated({ limit, offset, callType, success, messageId });
+      
+      res.json({
+        calls: result.calls,
+        total: result.total,
+        limit,
+        offset,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to get LLM calls', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get reminders with pagination
+  app.get('/api/reminders', apiAuth, (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const sent = req.query.sent === 'true' ? true : req.query.sent === 'false' ? false : undefined;
+      
+      const result = getReminders({ limit, offset, sent });
+      
+      res.json({
+        reminders: result.reminders,
+        total: result.total,
+        limit,
+        offset,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to get reminders', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get all pipeline logs with pagination
+  app.get('/api/pipeline-logs', apiAuth, (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const stage = req.query.stage as string;
+      const status = req.query.status as string;
+      
+      const result = getAllPipelineLogs({ limit, offset, stage, status });
+      
+      res.json({
+        logs: result.logs,
+        total: result.total,
+        limit,
+        offset,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to get pipeline logs', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get messages with full pipeline data
+  app.get('/api/messages/detailed', apiAuth, (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const chatId = req.query.chat as string;
+      const search = req.query.search as string;
+      const heuristicPassed = req.query.heuristicPassed === 'true' ? true : 
+                              req.query.heuristicPassed === 'false' ? false : undefined;
+      const classificationTypes = req.query.classificationTypes 
+        ? (req.query.classificationTypes as string).split(',') 
+        : undefined;
+      
+      const result = getMessagesWithPipelineData({ 
+        limit, offset, chatId, search, heuristicPassed, classificationTypes 
+      });
+      
+      res.json({
+        messages: result.messages,
+        total: result.total,
+        limit,
+        offset,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to get detailed messages', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Read any log file (not just pipeline)
+  app.get('/api/logs/file/:filename', apiAuth, (req: Request, res: Response) => {
+    try {
+      const filename = req.params.filename as string;
+      const lines = parseInt(req.query.lines as string) || 100;
+      
+      // Security: only allow specific log files
+      const allowedFiles = [
+        'rmd.log', 'error.log', 'exceptions.log', 'rejections.log',
+        'evolution.log', 'webapp.log'
+      ];
+      
+      if (!allowedFiles.includes(filename)) {
+        res.status(400).json({ error: 'Invalid log file', allowedFiles });
+        return;
+      }
+      
+      const logPath = path.join(process.cwd(), 'logs', filename);
+      
+      if (!fs.existsSync(logPath)) {
+        res.json({ filename, entries: [], message: 'Log file not found or empty' });
+        return;
+      }
+      
+      const content = fs.readFileSync(logPath, 'utf-8');
+      const allLines = content.split('\n').filter(Boolean);
+      const entries = allLines.slice(-lines); // Get last N lines
+      
+      res.json({
+        filename,
+        entries,
+        totalLines: allLines.length,
+        count: entries.length,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to read log file', { error, filename: req.params.filename });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // List all log files (both pipeline and root)
+  app.get('/api/logs/all', apiAuth, (_req: Request, res: Response) => {
+    try {
+      const logsDir = path.join(process.cwd(), 'logs');
+      const pipelineDir = path.join(logsDir, 'pipeline');
+      const dataLogsDir = path.join(process.cwd(), 'data', 'logs');
+      
+      const result: { name: string; path: string; size: number; modified: string }[] = [];
+      
+      // Root log files
+      if (fs.existsSync(logsDir)) {
+        const rootFiles = fs.readdirSync(logsDir)
+          .filter(f => f.endsWith('.log'))
+          .map(f => {
+            const stats = fs.statSync(path.join(logsDir, f));
+            return {
+              name: f,
+              path: `logs/${f}`,
+              size: stats.size,
+              modified: stats.mtime.toISOString(),
+            };
+          });
+        result.push(...rootFiles);
+      }
+      
+      // Pipeline log files
+      if (fs.existsSync(pipelineDir)) {
+        const pipelineFiles = fs.readdirSync(pipelineDir)
+          .filter(f => f.endsWith('.log'))
+          .map(f => {
+            const stats = fs.statSync(path.join(pipelineDir, f));
+            return {
+              name: `pipeline/${f}`,
+              path: `logs/pipeline/${f}`,
+              size: stats.size,
+              modified: stats.mtime.toISOString(),
+            };
+          });
+        result.push(...pipelineFiles);
+      }
+      
+      // Data logs
+      if (fs.existsSync(dataLogsDir)) {
+        const dataFiles = fs.readdirSync(dataLogsDir)
+          .filter(f => f.endsWith('.log'))
+          .map(f => {
+            const stats = fs.statSync(path.join(dataLogsDir, f));
+            return {
+              name: `data/${f}`,
+              path: `data/logs/${f}`,
+              size: stats.size,
+              modified: stats.mtime.toISOString(),
+            };
+          });
+        result.push(...dataFiles);
+      }
+      
+      res.json({ 
+        logs: result,
+        count: result.length,
+        timestamp: getISTTimestamp() 
+      });
+    } catch (error) {
+      logger.error('Failed to list all logs', { error });
       res.status(500).json({ error: 'Internal server error' });
     }
   });

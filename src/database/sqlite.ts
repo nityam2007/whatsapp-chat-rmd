@@ -1779,6 +1779,325 @@ export function getLLMCalls(limit: number = 50, callType?: string): LLMCallLog[]
   }));
 }
 
+// ============================================================================
+// REMINDERS - Get All
+// ============================================================================
+
+export interface ReminderWithEvent {
+  id: string;
+  event_id: string;
+  trigger_time: string;
+  trigger_time_ist: string | null;
+  sent: boolean;
+  created_at: string;
+  event_title?: string;
+  event_status?: string;
+}
+
+/**
+ * Get all reminders with pagination
+ */
+export function getReminders(options: {
+  limit?: number;
+  offset?: number;
+  sent?: boolean;
+}): { reminders: ReminderWithEvent[]; total: number } {
+  const db = dbInstance || initDatabase();
+  const { limit = 50, offset = 0, sent } = options;
+  
+  let whereClause = '1=1';
+  const params: unknown[] = [];
+  
+  if (sent !== undefined) {
+    whereClause += ' AND r.sent = ?';
+    params.push(sent ? 1 : 0);
+  }
+  
+  // Get total count
+  const countStmt = db.prepare(`SELECT COUNT(*) as count FROM reminders r WHERE ${whereClause}`);
+  const { count: total } = countStmt.get(...params) as { count: number };
+  
+  // Get reminders with event info
+  const stmt = db.prepare(`
+    SELECT r.*, e.title as event_title, e.status as event_status
+    FROM reminders r
+    LEFT JOIN events e ON r.event_id = e.id
+    WHERE ${whereClause}
+    ORDER BY r.trigger_time DESC
+    LIMIT ? OFFSET ?
+  `);
+  
+  const rows = stmt.all(...params, limit, offset) as Record<string, unknown>[];
+  
+  const reminders = rows.map(row => ({
+    id: row.id as string,
+    event_id: row.event_id as string,
+    trigger_time: row.trigger_time as string,
+    trigger_time_ist: row.trigger_time_ist as string | null,
+    sent: row.sent === 1,
+    created_at: row.created_at as string,
+    event_title: row.event_title as string | undefined,
+    event_status: row.event_status as string | undefined,
+  }));
+  
+  return { reminders, total };
+}
+
+// ============================================================================
+// ALL PIPELINE LOGS (not just per message)
+// ============================================================================
+
+/**
+ * Get all pipeline logs with pagination
+ */
+export function getAllPipelineLogs(options: {
+  limit?: number;
+  offset?: number;
+  stage?: string;
+  status?: string;
+}): { logs: PipelineLogEntry[]; total: number } {
+  const db = dbInstance || initDatabase();
+  const { limit = 50, offset = 0, stage, status } = options;
+  
+  let whereClause = '1=1';
+  const params: unknown[] = [];
+  
+  if (stage) {
+    whereClause += ' AND stage = ?';
+    params.push(stage);
+  }
+  
+  if (status) {
+    whereClause += ' AND status = ?';
+    params.push(status);
+  }
+  
+  // Get total count
+  const countStmt = db.prepare(`SELECT COUNT(*) as count FROM pipeline_logs WHERE ${whereClause}`);
+  const { count: total } = countStmt.get(...params) as { count: number };
+  
+  // Get logs
+  const stmt = db.prepare(`
+    SELECT * FROM pipeline_logs
+    WHERE ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?
+  `);
+  
+  const rows = stmt.all(...params, limit, offset) as Record<string, unknown>[];
+  
+  const logs = rows.map(row => ({
+    id: row.id as string,
+    message_id: row.message_id as string,
+    stage: row.stage as string,
+    status: row.status as string,
+    data: row.data ? JSON.parse(row.data as string) : undefined,
+    duration_ms: row.duration_ms as number | undefined,
+    created_at: row.created_at as string,
+  }));
+  
+  return { logs, total };
+}
+
+// ============================================================================
+// LLM CALLS - Enhanced with pagination
+// ============================================================================
+
+/**
+ * Get LLM calls with pagination and filtering
+ */
+export function getLLMCallsPaginated(options: {
+  limit?: number;
+  offset?: number;
+  callType?: string;
+  success?: boolean;
+  messageId?: string;
+}): { calls: (LLMCallLog & { created_at: string })[]; total: number } {
+  const db = dbInstance || initDatabase();
+  const { limit = 50, offset = 0, callType, success, messageId } = options;
+  
+  let whereClause = '1=1';
+  const params: unknown[] = [];
+  
+  if (callType) {
+    whereClause += ' AND call_type = ?';
+    params.push(callType);
+  }
+  
+  if (success !== undefined) {
+    whereClause += ' AND success = ?';
+    params.push(success ? 1 : 0);
+  }
+  
+  if (messageId) {
+    whereClause += ' AND message_id = ?';
+    params.push(messageId);
+  }
+  
+  // Get total count
+  const countStmt = db.prepare(`SELECT COUNT(*) as count FROM llm_calls WHERE ${whereClause}`);
+  const { count: total } = countStmt.get(...params) as { count: number };
+  
+  // Get calls
+  const stmt = db.prepare(`
+    SELECT * FROM llm_calls
+    WHERE ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?
+  `);
+  
+  const rows = stmt.all(...params, limit, offset) as Record<string, unknown>[];
+  
+  const calls = rows.map(row => ({
+    id: row.id as string,
+    message_id: row.message_id as string | undefined,
+    call_type: row.call_type as 'classification' | 'extraction' | 'other',
+    model: row.model as string,
+    provider: row.provider as string,
+    prompt: row.prompt as string,
+    response: row.response as string | undefined,
+    response_parsed: row.response_parsed as string | undefined,
+    finish_reason: row.finish_reason as string | undefined,
+    tokens_prompt: row.tokens_prompt as number,
+    tokens_completion: row.tokens_completion as number,
+    tokens_total: row.tokens_total as number,
+    duration_ms: row.duration_ms as number,
+    success: row.success === 1,
+    error: row.error as string | undefined,
+    created_at: row.created_at as string,
+  }));
+  
+  return { calls, total };
+}
+
+// ============================================================================
+// ENHANCED MESSAGES - Get with full pipeline data
+// ============================================================================
+
+/**
+ * Get messages with all pipeline data
+ */
+export function getMessagesWithPipelineData(options: {
+  limit?: number;
+  offset?: number;
+  chatId?: string;
+  search?: string;
+  heuristicPassed?: boolean;
+  classificationTypes?: string[];
+}): { messages: EnhancedMessage[]; total: number } {
+  const db = dbInstance || initDatabase();
+  const { limit = 50, offset = 0, chatId, search, heuristicPassed, classificationTypes } = options;
+  
+  let whereClause = '1=1';
+  const params: unknown[] = [];
+  
+  if (chatId) {
+    whereClause += ' AND chat_id = ?';
+    params.push(chatId);
+  }
+  
+  if (search) {
+    whereClause += ' AND content LIKE ?';
+    params.push(`%${search}%`);
+  }
+  
+  if (heuristicPassed !== undefined) {
+    whereClause += ' AND heuristic_passed = ?';
+    params.push(heuristicPassed ? 1 : 0);
+  }
+  
+  if (classificationTypes && classificationTypes.length > 0) {
+    whereClause += ` AND classification_type IN (${classificationTypes.map(() => '?').join(',')})`;
+    params.push(...classificationTypes);
+  }
+  
+  // Get total count
+  const countStmt = db.prepare(`SELECT COUNT(*) as count FROM messages WHERE ${whereClause}`);
+  const { count: total } = countStmt.get(...params) as { count: number };
+  
+  // Get messages with all fields
+  const stmt = db.prepare(`
+    SELECT * FROM messages
+    WHERE ${whereClause}
+    ORDER BY timestamp DESC
+    LIMIT ? OFFSET ?
+  `);
+  
+  const rows = stmt.all(...params, limit, offset) as Record<string, unknown>[];
+  
+  const messages = rows.map(row => ({
+    id: row.id as string,
+    chat_id: row.chat_id as string,
+    sender: row.sender as string,
+    content: row.content as string,
+    timestamp: row.timestamp as number,
+    is_from_me: row.is_from_me === 1,
+    processed: row.processed === 1,
+    created_at: row.created_at as string,
+    // Pipeline data
+    message_type: row.message_type as string | undefined,
+    heuristic_passed: row.heuristic_passed === null ? null : row.heuristic_passed === 1,
+    heuristic_score: row.heuristic_score as number | null,
+    heuristic_signals: row.heuristic_signals ? JSON.parse(row.heuristic_signals as string) : null,
+    classification_type: row.classification_type as string | null,
+    classification_confidence: row.classification_confidence as number | null,
+    extraction_success: row.extraction_success === null ? null : row.extraction_success === 1,
+    extraction_event_id: row.extraction_event_id as string | null,
+    pipeline_completed: row.pipeline_completed === 1,
+    pipeline_error: row.pipeline_error as string | null,
+  }));
+  
+  return { messages, total };
+}
+
+// ============================================================================
+// DATABASE STATS
+// ============================================================================
+
+/**
+ * Get comprehensive database statistics
+ */
+export function getDatabaseStats(): {
+  tables: { name: string; count: number; size?: number }[];
+  totalSize: number;
+} {
+  const db = dbInstance || initDatabase();
+  
+  const tables = [
+    'contacts',
+    'messages', 
+    'events',
+    'reminders',
+    'pipeline_logs',
+    'llm_calls',
+    'llm_extraction_logs',
+    'learned_patterns',
+    'pattern_learning_runs',
+    'archive_metadata',
+    'push_subscriptions',
+  ];
+  
+  const stats = tables.map(tableName => {
+    try {
+      const result = db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`).get() as { count: number };
+      return { name: tableName, count: result.count };
+    } catch {
+      return { name: tableName, count: 0 };
+    }
+  });
+  
+  // Get database file size
+  let totalSize = 0;
+  try {
+    const dbPath = config.databasePath;
+    if (fs.existsSync(dbPath)) {
+      totalSize = fs.statSync(dbPath).size;
+    }
+  } catch { /* ignore */ }
+  
+  return { tables: stats, totalSize };
+}
+
 export default { 
   initDatabase, 
   getDatabase, 
@@ -1794,6 +2113,7 @@ export default {
   formatISTForStorage,
   // Message functions
   getMessages,
+  getMessagesWithPipelineData,
   messageExists,
   storeEnhancedMessage,
   updateMessageHeuristic,
@@ -1814,12 +2134,23 @@ export default {
   // Pipeline logs
   storePipelineLog,
   getPipelineLogs,
+  getAllPipelineLogs,
   // LLM call logs
   storeLLMCall,
   getLLMCalls,
+  getLLMCallsPaginated,
+  // Reminders
+  getReminders,
+  storeReminder,
+  markReminderSent,
+  getPendingReminders,
+  deleteReminder,
+  getRemindersForEvent,
   // Archive functions
   archiveOldData,
   getArchiveMetadata,
+  // Database stats
+  getDatabaseStats,
   // Push subscription functions
   storePushSubscription,
   getPushSubscriptions,
