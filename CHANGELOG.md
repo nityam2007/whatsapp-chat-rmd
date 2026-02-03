@@ -5,6 +5,34 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.2] - 2026-02-03
+
+### Fixed - Phone Number Fallback for Unknown Contacts
+
+When Evolution API doesn't provide a contact name (pushName), the system now uses the phone number as the identifier instead of showing "Unknown".
+
+#### Changes
+- **evolution.ts** - Extract phone from JID when pushName not available
+  - `getDisplayName()` helper function added
+  - `extractPhoneFromJid()` converts `919664833459@s.whatsapp.net` → `+919664833459`
+- **sqlite.ts** - `getContactName()` and `getContactNameInternal()` use phone fallback
+- **contextBuilder.ts** - Uses `getContactName()` with phone fallback for LLM context
+- Events, messages, and logs now show phone number instead of "Unknown"
+
+#### Example
+Before: `Sender: Unknown`
+After: `Sender: +919664833459`
+
+#### Files Modified
+```
+src/webhook/evolution.ts      # Phone extraction helpers, getDisplayName()
+src/database/sqlite.ts        # getContactName(), getContactNameInternal() with phone fallback
+src/pipeline/contextBuilder.ts # Uses getContactName() for contact and sender
+CHANGELOG.md                  # This entry
+```
+
+---
+
 ## [0.7.1] - 2026-02-03
 
 ### Changed - Documentation Update

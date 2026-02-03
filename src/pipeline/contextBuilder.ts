@@ -7,7 +7,7 @@
  */
 
 import { StoredMessage, MessageContext } from '../types/index.js';
-import { getDatabase, getContactById } from '../database/sqlite.js';
+import { getDatabase, getContactName } from '../database/sqlite.js';
 import { countTokens } from './tokenCompressor.js';
 import logger from '../utils/logger.js';
 
@@ -39,9 +39,8 @@ export async function buildContext(
 
   const db = getDatabase();
   
-  // Get contact info for this chat
-  const contact = getContactById(currentMessage.chat_id);
-  const contactName = contact?.name || null;
+  // Get contact info for this chat (uses phone number as fallback)
+  const contactName = getContactName(currentMessage.chat_id);
   
   // Get recent messages from the same chat
   const recentMessages = await db.getRecentMessages(currentMessage.chat_id, windowSize);
@@ -70,8 +69,10 @@ export async function buildContext(
   const totalContent = recentMessages.map(m => `[${m.sender}]: ${m.content}`).join('\n');
   const tokenCount = countTokens(totalContent);
 
-  // Determine sender info
-  const sender = currentMessage.is_from_me === true ? USER_IDENTITY : (currentMessage.sender || 'Unknown');
+  // Determine sender info (use contact name with phone fallback, never 'Unknown')
+  const sender = currentMessage.is_from_me === true 
+    ? USER_IDENTITY 
+    : (currentMessage.sender || getContactName(currentMessage.chat_id));
   const senderIsMe = currentMessage.is_from_me === true;
 
   logger.debug('Context built', {
@@ -107,7 +108,7 @@ export function formatContextForLLM(context: EnrichedContext): string {
   
   // Add context header with participant info
   lines.push('=== CHAT CONTEXT ===');
-  lines.push(`Chat with: ${context.contactName || 'Unknown'}`);
+  lines.push(`Chat with: ${context.contactName}`);
   lines.push(`Participants in this conversation: ${context.chatParticipants.join(', ')}`);
   lines.push(`Current message sender: ${context.sender}${context.senderIsMe ? ' (this is ME, the user of this system)' : ''}`);
   lines.push('');
@@ -118,7 +119,7 @@ export function formatContextForLLM(context: EnrichedContext): string {
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     const isFromMe = m.is_from_me === true;
-    const sender = isFromMe ? 'Me' : (m.sender || 'Unknown');
+    const sender = isFromMe ? 'Me' : (m.sender || context.contactName);
     const time = new Date(m.timestamp * 1000).toISOString();
     const isLast = i === messages.length - 1;
     

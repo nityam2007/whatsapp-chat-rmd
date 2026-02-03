@@ -428,9 +428,8 @@ export function getDatabase(): IDatabase {
     },
 
     async storeEvent(event: StoredEvent): Promise<void> {
-      // Get contact name for this chat
-      const contact = getContact(db, event.chat_id);
-      const contactName = contact?.name || 'Unknown';
+      // Get contact name for this chat (uses phone fallback)
+      const contactName = getContactNameInternal(db, event.chat_id);
       
       // Convert times to IST
       const startTimeIST = event.start_time ? formatISTDate(event.start_time) : null;
@@ -585,6 +584,19 @@ function getContact(db: Database.Database, id: string): StoredContact | null {
 }
 
 /**
+ * Get contact name with phone fallback (internal helper)
+ */
+function getContactNameInternal(db: Database.Database, chatId: string): string {
+  const contact = getContact(db, chatId);
+  if (contact?.name && contact.name.trim()) {
+    return contact.name.trim();
+  }
+  // Fallback to phone number (with + prefix)
+  const phone = extractPhoneFromJid(chatId);
+  return phone ? `+${phone}` : chatId;
+}
+
+/**
  * Upsert contact (create or update)
  */
 export function upsertContact(
@@ -645,10 +657,16 @@ export function getContactById(id: string): StoredContact | null {
 
 /**
  * Get contact name by ID (for AI context)
+ * Falls back to phone number if name not available
  */
 export function getContactName(chatId: string): string {
   const contact = getContactById(chatId);
-  return contact?.name || 'Unknown';
+  if (contact?.name && contact.name.trim()) {
+    return contact.name.trim();
+  }
+  // Fallback to phone number (with + prefix)
+  const phone = extractPhoneFromJid(chatId);
+  return phone ? `+${phone}` : chatId;
 }
 
 /**
@@ -1425,8 +1443,8 @@ export function getRemindersForEvent(eventId: string): { id: string; trigger_tim
 export function storeEventWithExtraction(event: StoredEvent, rawExtraction?: Record<string, unknown>): void {
   const db = dbInstance || initDatabase();
   
-  const contact = getContact(db, event.chat_id);
-  const contactName = event.contact_name || contact?.name || 'Unknown';
+  // Use event's contact name, or get from contacts table with phone fallback
+  const contactName = event.contact_name || getContactNameInternal(db, event.chat_id);
   
   const startTimeIST = event.start_time ? formatISTDate(event.start_time) : null;
   const endTimeIST = event.end_time ? formatISTDate(event.end_time) : null;

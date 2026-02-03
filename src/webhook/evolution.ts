@@ -82,6 +82,25 @@ function isGroupMessage(chatId: string): boolean {
 }
 
 /**
+ * Extracts phone number from WhatsApp JID (chat_id)
+ * e.g., "919664833459@s.whatsapp.net" -> "+919664833459"
+ */
+function extractPhoneFromJid(jid: string): string {
+  const phone = jid.split('@')[0];
+  return phone ? `+${phone}` : jid;
+}
+
+/**
+ * Gets display name with phone number fallback
+ * Priority: pushName > phone number (never 'Unknown')
+ */
+function getDisplayName(pushName: string | undefined, chatId: string, isFromMe: boolean): string {
+  if (isFromMe) return 'Me';
+  if (pushName && pushName.trim()) return pushName.trim();
+  return extractPhoneFromJid(chatId);
+}
+
+/**
  * Converts Evolution API payload to StoredMessage
  * Also stores/updates contact information
  */
@@ -96,7 +115,7 @@ function payloadToMessage(payload: EvolutionWebhookPayload): StoredMessage | nul
   // Extract sender info
   const chatId = payload.data.key.remoteJid;
   const isFromMe = payload.data.key.fromMe;
-  const senderName = isFromMe ? 'Me' : (payload.data.pushName || 'Unknown');
+  const senderName = getDisplayName(payload.data.pushName, chatId, isFromMe);
   // const _senderId = payload.data.key.participant || chatId;  // Available if needed
   
   // Check if group message should be skipped
@@ -108,8 +127,10 @@ function payloadToMessage(payload: EvolutionWebhookPayload): StoredMessage | nul
   // Store/update contact in database
   // We always need to ensure the contact exists for the chat_id (for foreign key constraint)
   try {
-    // For own messages, use chatId to get/create contact; for incoming, use sender name
-    const contactName = isFromMe ? (payload.data.pushName || 'Unknown Contact') : senderName;
+    // For own messages, get contact name from pushName or use phone; for incoming, use sender name
+    const contactName = isFromMe 
+      ? (payload.data.pushName?.trim() || extractPhoneFromJid(chatId)) 
+      : senderName;
     upsertContact(chatId, contactName);
     logger.debug('Contact upserted', { chatId, contactName, isFromMe });
   } catch (error) {
