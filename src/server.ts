@@ -36,6 +36,8 @@ import {
   getLLMCallsPaginated,
   getReminders,
   getDatabaseStats,
+  cleanupTestData,
+  deleteContactAndData,
 } from './database/sqlite.js';
 import logger from './utils/logger.js';
 import { metrics } from './utils/metrics.js';
@@ -972,6 +974,49 @@ export function createServer(): Express {
       });
     } catch (error) {
       logger.error('Failed to list all logs', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // =============================================
+  // DATA CLEANUP API
+  // =============================================
+
+  // Clean up test/fake data
+  app.post('/api/cleanup/test-data', apiAuth, (_req: Request, res: Response) => {
+    try {
+      const result = cleanupTestData();
+      res.json({
+        success: true,
+        message: 'Test data cleanup completed',
+        ...result,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to cleanup test data', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Delete a specific contact and all related data
+  app.delete('/api/contacts/:id', apiAuth, (req: Request, res: Response) => {
+    try {
+      const contactId = req.params.id as string;
+      
+      if (!contactId) {
+        res.status(400).json({ error: 'Contact ID is required' });
+        return;
+      }
+      
+      const result = deleteContactAndData(contactId);
+      res.json({
+        success: true,
+        message: `Contact ${contactId} and related data deleted`,
+        ...result,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to delete contact', { error, contactId: req.params.id });
       res.status(500).json({ error: 'Internal server error' });
     }
   });

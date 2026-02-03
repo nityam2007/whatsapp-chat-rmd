@@ -367,6 +367,25 @@ app.get('/api/contacts/:name/events', async (req, res) => {
   }
 });
 
+app.delete('/api/contacts/:id', async (req, res) => {
+  try {
+    const data = await proxyToRMD(`/api/contacts/${encodeURIComponent(req.params.id)}`, 'DELETE');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete contact' });
+  }
+});
+
+// Cleanup
+app.post('/api/cleanup/test-data', async (_req, res) => {
+  try {
+    const data = await proxyToRMD('/api/cleanup/test-data', 'POST');
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to cleanup test data' });
+  }
+});
+
 // Logs
 app.get('/api/logs', async (_req, res) => {
   try {

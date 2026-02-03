@@ -541,7 +541,10 @@
       <section id="page-database" class="page">
         <div class="header">
           <h2>Database Overview</h2>
-          <button class="btn btn-outline" onclick="loadDatabaseStats()">Refresh</button>
+          <div class="filters">
+            <button class="btn btn-danger" onclick="cleanupTestData()" title="Remove test/fake/demo data">Cleanup Test Data</button>
+            <button class="btn btn-outline" onclick="loadDatabaseStats()">Refresh</button>
+          </div>
         </div>
         
         <div class="stats-grid" id="db-stats-cards"></div>
@@ -1207,8 +1210,9 @@
             <td>${c.is_group ? '<span class="badge badge-info">Group</span>' : '<span class="badge badge-soft">User</span>'}</td>
             <td class="num"><strong>${c.message_count}</strong></td>
             <td style="font-size:11px;white-space:nowrap;">${formatDate(c.last_seen)}</td>
-            <td>
-              <button class="btn btn-sm" onclick="viewContactEvents('${escapeHtml(c.name)}')" title="View events for this contact">Events</button>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-sm" onclick="viewContactEvents('${escapeHtml(c.name)}')" title="View events">Events</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteContact('${escapeHtml(c.id)}', '${escapeHtml(c.name)}')" title="Delete contact and data">Delete</button>
             </td>
           </tr>
         `).join('') || '<tr><td colspan="6" class="empty-state">No contacts</td></tr>';
@@ -1243,6 +1247,62 @@
       } catch (error) {
         console.error('Failed to load contact events:', error);
         showToast('Failed to load events', 'error');
+      }
+    }
+    
+    // Delete a contact and all related data
+    async function deleteContact(contactId, contactName) {
+      if (!confirm(`Are you sure you want to delete "${contactName}" and all related messages, events, and reminders?`)) {
+        return;
+      }
+      
+      try {
+        const res = await fetch(`${API_URL}/api/contacts/${encodeURIComponent(contactId)}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          showToast(`Deleted: ${data.deletedMessages} messages, ${data.deletedEvents} events, ${data.deletedReminders} reminders`, 'success');
+          loadContacts(); // Refresh
+        } else {
+          showToast(data.error || 'Failed to delete contact', 'error');
+        }
+      } catch (error) {
+        console.error('Failed to delete contact:', error);
+        showToast('Failed to delete contact', 'error');
+      }
+    }
+    
+    // Cleanup test/fake data
+    async function cleanupTestData() {
+      if (!confirm('This will delete ALL test/fake/demo data including:\n- Contacts with "test", "fake", "demo", "sample" in name/ID\n- Related messages, events, and reminders\n\nContinue?')) {
+        return;
+      }
+      
+      try {
+        const res = await fetch(`${API_URL}/api/cleanup/test-data`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          const summary = `Cleaned up:
+- ${data.deletedMessages} messages
+- ${data.deletedEvents} events
+- ${data.deletedContacts} contacts
+- ${data.deletedReminders} reminders
+- ${data.deletedPipelineLogs} pipeline logs
+- ${data.deletedLLMCalls} LLM calls`;
+          
+          showModal('Cleanup Complete', `<pre style="font-size:14px;">${summary}</pre>`);
+          loadDatabaseStats(); // Refresh
+        } else {
+          showToast(data.error || 'Cleanup failed', 'error');
+        }
+      } catch (error) {
+        console.error('Cleanup failed:', error);
+        showToast('Cleanup failed', 'error');
       }
     }
     

@@ -2098,6 +2098,196 @@ export function getDatabaseStats(): {
   return { tables: stats, totalSize };
 }
 
+// ============================================================================
+// DATA CLEANUP
+// ============================================================================
+
+/**
+ * Clean up test/fake data from database
+ * Removes data that matches test patterns
+ */
+export function cleanupTestData(): {
+  deletedMessages: number;
+  deletedEvents: number;
+  deletedContacts: number;
+  deletedReminders: number;
+  deletedPipelineLogs: number;
+  deletedLLMCalls: number;
+} {
+  const db = dbInstance || initDatabase();
+  
+  // Test data patterns to match
+  const testPatterns = [
+    '%test%',
+    '%Test%',
+    '%TEST%',
+    '%fake%',
+    '%Fake%',
+    '%FAKE%',
+    '%dummy%',
+    '%Dummy%',
+    '%sample%',
+    '%Sample%',
+    '%example%',
+    '%Example%',
+    '%mock%',
+    '%Mock%',
+    '%demo%',
+    '%Demo%',
+  ];
+  
+  // Test contact IDs/phones to match
+  const testContactPatterns = [
+    'test-%',
+    'Test%',
+    '%test-chat%',
+    '%TestUser%',
+  ];
+  
+  let deletedMessages = 0;
+  let deletedEvents = 0;
+  let deletedContacts = 0;
+  let deletedReminders = 0;
+  let deletedPipelineLogs = 0;
+  let deletedLLMCalls = 0;
+  
+  // Start transaction
+  db.exec('BEGIN TRANSACTION');
+  
+  try {
+    // 1. Find test contacts
+    const testContactQuery = `
+      SELECT id FROM contacts 
+      WHERE ${testContactPatterns.map(() => 'id LIKE ? OR name LIKE ? OR phone LIKE ?').join(' OR ')}
+    `;
+    const testContactParams = testContactPatterns.flatMap(p => [p, p, p]);
+    const testContacts = db.prepare(testContactQuery).all(...testContactParams) as { id: string }[];
+    const testContactIds = testContacts.map(c => c.id);
+    
+    // 2. Delete messages from test contacts or with test content
+    if (testContactIds.length > 0) {
+      const placeholders = testContactIds.map(() => '?').join(',');
+      const result = db.prepare(`DELETE FROM messages WHERE chat_id IN (${placeholders})`).run(...testContactIds);
+      deletedMessages += result.changes;
+    }
+    
+    // Also delete messages with test content patterns
+    const msgPatternQuery = `DELETE FROM messages WHERE ${testPatterns.map(() => 'content LIKE ?').join(' OR ')}`;
+    const msgResult = db.prepare(msgPatternQuery).run(...testPatterns);
+    deletedMessages += msgResult.changes;
+    
+    // 3. Delete events from test contacts or with test content
+    if (testContactIds.length > 0) {
+      const placeholders = testContactIds.map(() => '?').join(',');
+      const result = db.prepare(`DELETE FROM events WHERE contact_id IN (${placeholders})`).run(...testContactIds);
+      deletedEvents += result.changes;
+    }
+    
+    // Also delete events with test content patterns
+    const eventPatternQuery = `DELETE FROM events WHERE ${testPatterns.map(() => 'title LIKE ? OR description LIKE ?').join(' OR ')}`;
+    const eventParams = testPatterns.flatMap(p => [p, p]);
+    const eventResult = db.prepare(eventPatternQuery).run(...eventParams);
+    deletedEvents += eventResult.changes;
+    
+    // 4. Delete reminders for deleted events
+    const reminderResult = db.prepare(`
+      DELETE FROM reminders WHERE event_id NOT IN (SELECT id FROM events)
+    `).run();
+    deletedReminders = reminderResult.changes;
+    
+    // 5. Delete pipeline logs for deleted messages
+    const pipelineResult = db.prepare(`
+      DELETE FROM pipeline_logs WHERE message_id NOT IN (SELECT id FROM messages)
+    `).run();
+    deletedPipelineLogs = pipelineResult.changes;
+    
+    // 6. Delete LLM calls for deleted messages
+    const llmResult = db.prepare(`
+      DELETE FROM llm_calls WHERE message_id NOT IN (SELECT id FROM messages) AND message_id IS NOT NULL
+    `).run();
+    deletedLLMCalls = llmResult.changes;
+    
+    // 7. Delete test contacts
+    if (testContactIds.length > 0) {
+      const placeholders = testContactIds.map(() => '?').join(',');
+      const result = db.prepare(`DELETE FROM contacts WHERE id IN (${placeholders})`).run(...testContactIds);
+      deletedContacts = result.changes;
+    }
+    
+    db.exec('COMMIT');
+    
+    logger.info('Test data cleanup completed', {
+      deletedMessages,
+      deletedEvents,
+      deletedContacts,
+      deletedReminders,
+      deletedPipelineLogs,
+      deletedLLMCalls,
+    });
+    
+    return {
+      deletedMessages,
+      deletedEvents,
+      deletedContacts,
+      deletedReminders,
+      deletedPipelineLogs,
+      deletedLLMCalls,
+    };
+  } catch (error) {
+    db.exec('ROLLBACK');
+    logger.error('Test data cleanup failed', { error });
+    throw error;
+  }
+}
+
+/**
+ * Delete a specific contact and all related data
+ */
+export function deleteContactAndData(contactId: string): {
+  deletedMessages: number;
+  deletedEvents: number;
+  deletedReminders: number;
+} {
+  const db = dbInstance || initDatabase();
+  
+  db.exec('BEGIN TRANSACTION');
+  
+  try {
+    // Get event IDs for this contact
+    const events = db.prepare('SELECT id FROM events WHERE contact_id = ?').all(contactId) as { id: string }[];
+    const eventIds = events.map(e => e.id);
+    
+    // Delete reminders for these events
+    let deletedReminders = 0;
+    if (eventIds.length > 0) {
+      const placeholders = eventIds.map(() => '?').join(',');
+      const result = db.prepare(`DELETE FROM reminders WHERE event_id IN (${placeholders})`).run(...eventIds);
+      deletedReminders = result.changes;
+    }
+    
+    // Delete events
+    const eventResult = db.prepare('DELETE FROM events WHERE contact_id = ?').run(contactId);
+    const deletedEvents = eventResult.changes;
+    
+    // Delete messages
+    const msgResult = db.prepare('DELETE FROM messages WHERE chat_id = ?').run(contactId);
+    const deletedMessages = msgResult.changes;
+    
+    // Delete contact
+    db.prepare('DELETE FROM contacts WHERE id = ?').run(contactId);
+    
+    db.exec('COMMIT');
+    
+    logger.info('Contact and data deleted', { contactId, deletedMessages, deletedEvents, deletedReminders });
+    
+    return { deletedMessages, deletedEvents, deletedReminders };
+  } catch (error) {
+    db.exec('ROLLBACK');
+    logger.error('Contact deletion failed', { contactId, error });
+    throw error;
+  }
+}
+
 export default { 
   initDatabase, 
   getDatabase, 
@@ -2157,4 +2347,7 @@ export default {
   getAllPushSubscriptions,
   deletePushSubscription,
   updatePushSubscriptionLastUsed,
+  // Cleanup functions
+  cleanupTestData,
+  deleteContactAndData,
 };
