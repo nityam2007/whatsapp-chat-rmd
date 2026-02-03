@@ -49,7 +49,8 @@ graph TB
     end
 
     subgraph "External Services"
-        OPENAI[OpenAI API]
+        GEMINI[Gemini API]
+        OPENAI[OpenAI API<br/>Classifier]
     end
 
     subgraph "User's Browser"
@@ -62,7 +63,7 @@ graph TB
     EVO -->|Webhook POST| WEBHOOK
     WEBHOOK --> PIPELINE
     PIPELINE --> RULEENG
-    RULEENG -->|Complex cases| OPENAI
+    RULEENG -->|Complex cases| GEMINI
     PIPELINE --> DB
     PIPELINE --> VECTOR
     PIPELINE -->|Schedule Reminders| SCHEDULER
@@ -78,13 +79,14 @@ graph TB
     style EVO fill:#6366f1,color:#fff
     style PIPELINE fill:#8b5cf6,color:#fff
     style RULEENG fill:#f59e0b,color:#fff
+    style GEMINI fill:#4285f4,color:#fff
     style OPENAI fill:#10a37f,color:#fff
     style BROWSER fill:#f59e0b,color:#fff
 ```
 
 ---
 
-## 2. Message Processing Pipeline (v0.5.0)
+## 2. Message Processing Pipeline (v0.7.1)
 
 ```mermaid
 flowchart TD
@@ -127,7 +129,7 @@ flowchart TD
     end
 
     subgraph "Stage 6: Big LLM Extraction"
-        E1[GPT-4o]
+        E1[Gemini 3 Flash]
         E2[Extract Structured Data]
         E3[Log to llm_extraction_logs]
     end
@@ -180,7 +182,7 @@ flowchart TD
 
     style MSG fill:#25D366,color:#fff
     style C1 fill:#10a37f,color:#fff
-    style E1 fill:#10a37f,color:#fff
+    style E1 fill:#4285f4,color:#fff
     style RE1 fill:#f59e0b,color:#fff
     style OUT4 fill:#f59e0b,color:#fff
     style DROP fill:#ef4444,color:#fff
@@ -188,14 +190,14 @@ flowchart TD
 
 ---
 
-## 3. Auto-Learning System (v0.5.0)
+## 3. Auto-Learning System (v0.7.1)
 
 ```mermaid
 flowchart TB
     subgraph "Runtime Processing"
         MSG[Message: "meeting 3 baje"]
         RE[Rule Engine<br/>Static + Dynamic Patterns]
-        LLM[LLM Extraction<br/>GPT-4o]
+        LLM[LLM Extraction<br/>Gemini 3 Flash]
         LOG[Log to llm_extraction_logs]
     end
 
@@ -233,7 +235,7 @@ flowchart TB
 
     style MSG fill:#25D366,color:#fff
     style RE fill:#f59e0b,color:#fff
-    style LLM fill:#10a37f,color:#fff
+    style LLM fill:#4285f4,color:#fff
     style CRON fill:#6366f1,color:#fff
     style STORE fill:#8b5cf6,color:#fff
 ```
@@ -252,7 +254,7 @@ flowchart TB
 
 ---
 
-## 4. Database Schema (v0.5.0)
+## 4. Database Schema (v0.7.1)
 
 ```mermaid
 erDiagram
@@ -420,7 +422,7 @@ flowchart LR
             CL[Classifier<br/>gpt-4o-mini]
             CB[Context Builder]
             RE[Rule Engine<br/>+ Learning]
-            EX[Extractor<br/>gpt-4o]
+            EX[Extractor<br/>Gemini 3 Flash]
             ER[Event Router]
         end
         
@@ -438,8 +440,9 @@ flowchart LR
         NOT[Notification]
     end
 
-    subgraph OpenAI["OpenAI"]
-        API[API]
+    subgraph OpenAI["AI Services"]
+        CLASSIFIER[OpenAI<br/>Classifier]
+        GEMINI[Gemini<br/>Extractor]
     end
 
     WA <-->|Messages| WAS
@@ -447,14 +450,14 @@ flowchart LR
     EVO -->|POST /webhook| WH
     WH --> HG
     HG -->|Pass| CL
-    CL -->|Classify| API
-    API -->|Event Type| CL
+    CL -->|Classify| CLASSIFIER
+    CLASSIFIER -->|Event Type| CL
     CL --> CB
     CB --> RE
     RE -->|High Confidence| ER
     RE -->|Low Confidence| EX
-    EX -->|Extract| API
-    API -->|Structured Data| EX
+    EX -->|Extract| GEMINI
+    GEMINI -->|Structured Data| EX
     EX --> ER
     ER --> SQL
     ER --> VEC
@@ -464,7 +467,8 @@ flowchart LR
     SW --> NOT
 
     style WA fill:#25D366,color:#fff
-    style API fill:#10a37f,color:#fff
+    style CLASSIFIER fill:#10a37f,color:#fff
+    style GEMINI fill:#4285f4,color:#fff
     style RE fill:#f59e0b,color:#fff
     style NOT fill:#f59e0b,color:#fff
 ```
@@ -540,12 +544,14 @@ graph TB
     end
 
     subgraph "External"
+        GEMINI[Gemini API]
         OPENAI[OpenAI API]
         BROWSERS[User Browsers]
     end
 
     EVO --> ARGUS
     ARGUS <--> REDIS
+    ARGUS --> GEMINI
     ARGUS --> OPENAI
     ARGUS --> LOKI
     LOKI --> GRAFANA
@@ -558,6 +564,7 @@ graph TB
     style EVO fill:#8b5cf6,color:#fff
     style PUSH fill:#f59e0b,color:#fff
     style GRAFANA fill:#f97316,color:#fff
+    style GEMINI fill:#4285f4,color:#fff
 ```
 
 ---
@@ -732,3 +739,6 @@ curl -X POST http://localhost:3000/api/learning/run
 | v0.4.0 | Rule engine, Regional languages (77 tests) |
 | v0.4.1 | Metrics system (51 tests) |
 | v0.5.0 | Auto-Learning System (237 tests) |
+| v0.6.0 | Pending confirmation, Gemini integration |
+| v0.7.0 | Dashboard UI redesign, Gemini 2.5 Flash |
+| v0.7.1 | Gemini 3 Flash upgrade, metrics fix |

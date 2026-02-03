@@ -16,7 +16,7 @@ flowchart LR
             CL[Classifier<br/>gpt-4o-mini]
             CB[Context Builder]
             RE[Rule Engine<br/>Static + Learned]
-            EX[Extractor<br/>gpt-4o]
+            EX[Extractor<br/>Gemini 3 Flash]
             ER[Event Router]
         end
         
@@ -39,8 +39,9 @@ flowchart LR
         NOT[Notification]
     end
 
-    subgraph OpenAI["OpenAI"]
-        API[API]
+    subgraph AI["AI Services"]
+        CLASSIFIER[OpenAI API<br/>Classifier]
+        GEMINI[Gemini API<br/>Extractor]
     end
 
     WA <-->|Messages| WAS
@@ -48,14 +49,14 @@ flowchart LR
     EVO -->|POST /webhook| WH
     WH --> HG
     HG -->|Pass| CL
-    CL -->|Classify| API
-    API -->|Event Type| CL
+    CL -->|Classify| CLASSIFIER
+    CLASSIFIER -->|Event Type| CL
     CL --> CB
     CB --> RE
     RE -->|High Confidence| ER
     RE -->|Low Confidence| EX
-    EX -->|Extract| API
-    API -->|Structured Data| EX
+    EX -->|Extract| GEMINI
+    GEMINI -->|Structured Data| EX
     EX --> ER
     ER --> SQL
     ER --> VEC
@@ -70,7 +71,8 @@ flowchart LR
     LP -.->|Load| RE
 
     style WA fill:#25D366,color:#fff
-    style API fill:#10a37f,color:#fff
+    style CLASSIFIER fill:#10a37f,color:#fff
+    style GEMINI fill:#4285f4,color:#fff
     style NOT fill:#f59e0b,color:#fff
     style RE fill:#22c55e,color:#fff
     style PL fill:#8b5cf6,color:#fff

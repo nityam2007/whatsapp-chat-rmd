@@ -25,13 +25,24 @@ New entries are added at the TOP of this file (append-only, newest first).
   - New "AI Model Configuration" section
   - Available Gemini models table
   - Updated environment variables
+- **docs/ARCHITECTURE.md** - Updated to v0.7.1
+  - Changed all LLM references from GPT-4o to Gemini 3 Flash
+  - Updated system architecture diagram (Gemini as primary extractor)
+  - Updated pipeline diagrams with correct model names
+  - Updated multi-container architecture (added Gemini API)
+  - Added version history entries for v0.6.0, v0.7.0, v0.7.1
+- **docs/diagrams/03-ai-pipeline.mmd** - Updated extractor to Gemini 3 Flash
+- **docs/diagrams/05-complete-data-flow.mmd** - Updated to show dual AI services (OpenAI for classifier, Gemini for extractor)
 
 #### Files Modified
 ```
-RULES.md      # Added AI assistant rules section
-INFO.md       # Updated to v0.7.0, Gemini 3
-README.md     # Added Gemini config
-CHANGELOG.md  # This entry
+RULES.md                           # Added AI assistant rules section
+INFO.md                            # Updated to v0.7.0, Gemini 3
+README.md                          # Added Gemini config
+CHANGELOG.md                       # This entry
+docs/ARCHITECTURE.md               # Updated LLM refs to Gemini 3 Flash
+docs/diagrams/03-ai-pipeline.mmd   # Extractor → Gemini 3 Flash
+docs/diagrams/05-complete-data-flow.mmd  # Dual AI services
 ```
 
 ---
