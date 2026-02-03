@@ -5,6 +5,50 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.3] - 2026-02-03
+
+### Fixed - Event Update Logic (Same Chat Priority)
+
+Fixed issue where update messages like "it got postponed to 11 AM now" were creating new events instead of updating existing ones in the same chat.
+
+#### Update Strategy (New)
+1. **Same Chat Priority**: First look for recent events in the SAME chat
+2. **Title Matching**: Match by title similarity (words in common)
+3. **Most Recent Fallback**: If no title match, use most recent event in chat
+4. **FAISS Fallback**: Use vector similarity search if no same-chat events
+
+#### Changes
+- **eventRouter.ts** - Completely rewritten `handleUpdateEvent()`:
+  - Added `getRecentEventsByChat()` check before FAISS
+  - Title matching with word overlap detection
+  - FAISS search now prioritizes same-chat matches
+  - Added `RESCHEDULE_KEYWORDS` for detecting time updates
+  - Sends "Event Updated" notification with old→new time
+  - Detailed logging of match source and updated fields
+- **sqlite.ts** - Added `getRecentEventsByChat(chatId, limit)` function
+
+#### Example Flow
+```
+Message 1: "meeting tomorrow at 10 am" → Creates event (ID: abc123)
+Message 2: "it got postponed to 11 AM now" → Updates event abc123 (not new!)
+```
+
+#### Reschedule Keywords Added
+```
+postponed, postpone, rescheduled, reschedule, moved to, changed to,
+shifted to, pushed to, delayed to, now at, updated to, new time,
+preponed, advanced to, badal gaya (Hindi)
+```
+
+#### Files Modified
+```
+src/pipeline/eventRouter.ts   # Rewritten handleUpdateEvent(), RESCHEDULE_KEYWORDS
+src/database/sqlite.ts        # Added getRecentEventsByChat()
+CHANGELOG.md                  # This entry
+```
+
+---
+
 ## [0.7.2] - 2026-02-03
 
 ### Fixed - Phone Number Fallback for Unknown Contacts

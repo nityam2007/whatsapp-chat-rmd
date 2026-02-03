@@ -23,6 +23,7 @@ import {
   eventExistsForMessage, 
   getEventBySourceMessage,
   storeEventWithExtraction,
+  getRecentEventsByChat,
 } from '../database/sqlite.js';
 import { getVectorStore, generateEmbedding } from '../vector/faiss.js';
 import { scheduleReminder } from '../scheduler/index.js';
@@ -48,6 +49,16 @@ const COMPLETE_KEYWORDS = [
   'happened', 'over', 'ended',
   'attended', 'went to',
   'mission accomplished', 'all done',
+];
+
+// Keywords that indicate a time update/reschedule
+const RESCHEDULE_KEYWORDS = [
+  'postponed', 'postpone', 'rescheduled', 'reschedule', 'rescheduling',
+  'moved to', 'changed to', 'shifted to', 'pushed to', 'delayed to',
+  'now at', 'updated to', 'new time', 'time changed',
+  'preponed', 'advanced to', 'earlier now',
+  // Hindi
+  'badal gaya', 'badal gya', 'change ho gaya', 'ab', 'ho gaya',
 ];
 
 /**
@@ -288,6 +299,11 @@ function isSimilarTime(time1: string | null, time2: string | null): boolean {
 /**
  * Handles an update to an existing event
  * Also handles cancel/complete requests if detected in source message
+ * 
+ * UPDATE STRATEGY:
+ * 1. First, check recent events in the SAME CHAT (most reliable)
+ * 2. If no match, use FAISS similarity search as fallback
+ * 3. Match by title similarity and/or time proximity
  */
 async function handleUpdateEvent(
   extracted: ExtractedEvent,
@@ -301,28 +317,120 @@ async function handleUpdateEvent(
   const isCancelRequest = CANCEL_KEYWORDS.some(k => messageContent.includes(k));
   const isCompleteRequest = COMPLETE_KEYWORDS.some(k => messageContent.includes(k));
 
-  // Find candidate event using FAISS similarity search
-  const searchText = `${extracted.title || ''} ${sourceMessage.content}`;
-  const embedding = await generateEmbedding(searchText);
-  const searchResults = await vectorStore.search(embedding, 5);
+  logger.info('Handling update event', {
+    chatId: sourceMessage.chat_id,
+    extractedTitle: extracted.title,
+    isCancelRequest,
+    isCompleteRequest,
+  });
 
-  if (searchResults.length === 0) {
-    logger.warn('No candidate event found for update, creating new');
-    return handleNewEvent(extracted, sourceMessage);
+  // =====================================
+  // STRATEGY 1: Find recent events in SAME CHAT
+  // =====================================
+  const recentChatEvents = getRecentEventsByChat(sourceMessage.chat_id, 10);
+  
+  let candidateEvent: StoredEvent | null = null;
+  let matchSource = 'none';
+
+  if (recentChatEvents.length > 0) {
+    logger.debug('Found recent events in same chat', {
+      count: recentChatEvents.length,
+      eventIds: recentChatEvents.map(e => e.id),
+    });
+
+    // Try to find best match by title similarity or recency
+    if (extracted.title) {
+      // If we have a title from extraction, find best title match
+      const titleLower = extracted.title.toLowerCase();
+      
+      for (const event of recentChatEvents) {
+        const eventTitleLower = (event.title || '').toLowerCase();
+        
+        // Check for title overlap (words in common)
+        const titleWords = titleLower.split(/\s+/).filter(w => w.length > 2);
+        const eventWords = eventTitleLower.split(/\s+/).filter(w => w.length > 2);
+        const commonWords = titleWords.filter(w => eventWords.includes(w) || eventTitleLower.includes(w));
+        
+        if (commonWords.length > 0 || titleLower.includes(eventTitleLower) || eventTitleLower.includes(titleLower)) {
+          candidateEvent = event;
+          matchSource = 'title_match';
+          logger.info('Found event by title match in same chat', {
+            eventId: event.id,
+            eventTitle: event.title,
+            extractedTitle: extracted.title,
+            commonWords,
+          });
+          break;
+        }
+      }
+    }
+    
+    // If no title match, use the most recent event in the chat
+    if (!candidateEvent && recentChatEvents.length > 0) {
+      candidateEvent = recentChatEvents[0];
+      matchSource = 'most_recent';
+      logger.info('Using most recent event in same chat', {
+        eventId: candidateEvent.id,
+        eventTitle: candidateEvent.title,
+        createdAt: candidateEvent.created_at,
+      });
+    }
   }
 
-  // Get the most similar event
-  const candidateId = searchResults[0].eventId;
-  const candidateEvent = await db.getEvent(candidateId);
-
+  // =====================================
+  // STRATEGY 2: FAISS fallback if no same-chat match
+  // =====================================
   if (!candidateEvent) {
-    logger.warn('Candidate event not found in database', { candidateId });
+    try {
+      const searchText = `${extracted.title || ''} ${sourceMessage.content}`;
+      const embedding = await generateEmbedding(searchText);
+      const searchResults = await vectorStore.search(embedding, 5);
+
+      if (searchResults.length > 0) {
+        // Prefer events from the same chat
+        for (const result of searchResults) {
+          const event = await db.getEvent(result.eventId);
+          if (event && event.chat_id === sourceMessage.chat_id) {
+            candidateEvent = event;
+            matchSource = 'faiss_same_chat';
+            logger.info('Found event via FAISS (same chat)', {
+              eventId: event.id,
+              similarity: result.similarity,
+            });
+            break;
+          }
+        }
+        
+        // If no same-chat match, use best FAISS result
+        if (!candidateEvent && searchResults[0].similarity > 0.7) {
+          candidateEvent = await db.getEvent(searchResults[0].eventId);
+          matchSource = 'faiss_global';
+          logger.info('Found event via FAISS (global)', {
+            eventId: candidateEvent?.id,
+            similarity: searchResults[0].similarity,
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn('FAISS search failed during update', { error });
+    }
+  }
+
+  // =====================================
+  // No candidate found - create new event
+  // =====================================
+  if (!candidateEvent) {
+    logger.warn('No candidate event found for update, creating new', {
+      chatId: sourceMessage.chat_id,
+      extractedTitle: extracted.title,
+    });
     return handleNewEvent(extracted, sourceMessage);
   }
 
   logger.info('Updating event', {
     eventId: candidateEvent.id,
-    similarity: searchResults[0].similarity,
+    eventTitle: candidateEvent.title,
+    matchSource,
     isCancelRequest,
     isCompleteRequest,
   });
@@ -363,12 +471,19 @@ async function handleUpdateEvent(
     return completedEvent;
   }
 
+  // Check if this is a reschedule/time update
+  const isReschedule = RESCHEDULE_KEYWORDS.some(k => messageContent.includes(k));
+  
   // Standard update - modify event details
-  if (extracted.title) {
+  let updatedFields: string[] = [];
+  
+  if (extracted.title && extracted.title !== candidateEvent.title) {
     updates.title = extracted.title;
+    updatedFields.push(`title: "${candidateEvent.title}" → "${extracted.title}"`);
   }
   if (extracted.start_time) {
     updates.start_time = extracted.start_time;
+    updatedFields.push(`time: ${candidateEvent.start_time || 'none'} → ${extracted.start_time}`);
   }
   if (extracted.end_time) {
     updates.end_time = extracted.end_time;
@@ -376,12 +491,46 @@ async function handleUpdateEvent(
   if (extracted.condition.type) {
     updates.condition_type = extracted.condition.type;
     updates.condition_value = extracted.condition.value;
+    updatedFields.push(`condition: ${extracted.condition.type}`);
   }
+
+  logger.info('Applying event updates', {
+    eventId: candidateEvent.id,
+    isReschedule,
+    updatedFields,
+  });
 
   await db.updateEvent(candidateEvent.id, updates);
 
-  // Recheck conflicts
+  // Get the updated event
   const updatedEvent = await db.getEvent(candidateEvent.id);
+  
+  // Send notification for the update
+  if (updatedEvent && updatedFields.length > 0) {
+    const timeStr = updatedEvent.start_time 
+      ? new Date(updatedEvent.start_time).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+      : 'TBD';
+    
+    await sendNotification({
+      type: 'update',
+      event_id: updatedEvent.id,
+      title: 'Event Updated',
+      body: `"${updatedEvent.title}" updated to ${timeStr}`,
+      data: {
+        updatedFields,
+        previousTime: candidateEvent.start_time,
+        newTime: updatedEvent.start_time,
+      },
+    });
+    
+    logger.info('Sent update notification', {
+      eventId: updatedEvent.id,
+      title: updatedEvent.title,
+      newTime: updatedEvent.start_time,
+    });
+  }
+
+  // Recheck conflicts
   if (updatedEvent && updatedEvent.start_time && updatedEvent.end_time) {
     const conflict = await checkConflicts(updatedEvent);
     if (conflict.hasConflict) {

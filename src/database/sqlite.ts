@@ -933,6 +933,27 @@ export function deleteEvent(id: string): boolean {
 }
 
 /**
+ * Get recent events from a specific chat (for update matching)
+ * Returns events from the same chat, ordered by most recent first
+ */
+export function getRecentEventsByChat(chatId: string, limit: number = 5): StoredEvent[] {
+  const db = dbInstance || initDatabase();
+  
+  const stmt = db.prepare(`
+    SELECT e.*, m.content as source_message_content
+    FROM events e
+    LEFT JOIN messages m ON e.source_message_id = m.id
+    WHERE e.chat_id = ?
+    AND e.status NOT IN ('cancelled', 'declined', 'completed')
+    ORDER BY e.created_at DESC
+    LIMIT ?
+  `);
+  
+  const rows = stmt.all(chatId, limit) as Record<string, unknown>[];
+  return rows.map(rowToEvent);
+}
+
+/**
  * Get upcoming events (for dashboard)
  */
 export function getUpcomingEvents(limit: number = 10): StoredEvent[] {
