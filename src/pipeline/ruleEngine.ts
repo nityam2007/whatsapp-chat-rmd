@@ -787,6 +787,13 @@ function extractContextualTrigger(
 
 /**
  * Combines date and time into ISO string
+ * 
+ * IMPORTANT: User times are always interpreted as IST (UTC+5:30).
+ * The output is UTC ISO-8601 format for storage.
+ * 
+ * Example: User says "10 AM" on Feb 4, 2026
+ * - We interpret this as 10:00 AM IST
+ * - We store as 2026-02-04T04:30:00.000Z (UTC)
  */
 function combineDateTime(
   date: Date | null,
@@ -796,15 +803,13 @@ function combineDateTime(
     return null;
   }
 
-  // Use IST timezone for interpretation, output UTC
-  const istOffset = 5.5 * 60; // IST is UTC+5:30 in minutes
-  
   const baseDate = date || new Date();
   const hours = time?.hours ?? 9; // Default to 9 AM if no time specified
   const minutes = time?.minutes ?? 0;
 
-  // Create date in IST
-  const istDate = new Date(
+  // Create date in local timezone (which is IST on this server)
+  // The Date constructor uses local time, and toISOString() converts to UTC
+  const localDate = new Date(
     baseDate.getFullYear(),
     baseDate.getMonth(),
     baseDate.getDate(),
@@ -814,15 +819,13 @@ function combineDateTime(
     0
   );
 
-  // Convert IST to UTC
-  const utcTime = new Date(istDate.getTime() - istOffset * 60 * 1000);
-
-  // If the resulting time is in the past, add a day
-  if (utcTime < new Date() && !date) {
-    utcTime.setDate(utcTime.getDate() + 1);
+  // If the resulting time is in the past and no explicit date was given, add a day
+  if (localDate < new Date() && !date) {
+    localDate.setDate(localDate.getDate() + 1);
   }
 
-  return utcTime.toISOString();
+  // toISOString() automatically converts local time to UTC
+  return localDate.toISOString();
 }
 
 /**

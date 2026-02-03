@@ -5,6 +5,33 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.4] - 2026-02-03
+
+### Fixed - IST Timezone Double-Conversion Bug
+
+Fixed critical bug where times extracted by the rule engine were being converted from IST to UTC **twice**, resulting in events being scheduled 5.5 hours earlier than intended.
+
+#### The Bug
+When user says "meeting at 10 AM":
+- **Before (WRONG)**: Stored as `2026-02-03T23:00:00.000Z` (4:30 AM IST next day!)
+- **After (CORRECT)**: Stored as `2026-02-04T04:30:00.000Z` (10:00 AM IST)
+
+#### Root Cause
+The `combineDateTime()` function was:
+1. Creating a Date with `new Date(year, month, day, 10, 0)` → Already in local IST
+2. Then subtracting 5.5 hours again → Double conversion!
+
+#### Fix
+Removed the manual IST offset subtraction. The JavaScript `Date` constructor already creates dates in local timezone (IST), and `.toISOString()` automatically converts to UTC.
+
+#### Files Modified
+```
+src/pipeline/ruleEngine.ts    # Fixed combineDateTime() function
+CHANGELOG.md                  # This entry
+```
+
+---
+
 ## [0.7.3] - 2026-02-03
 
 ### Fixed - Event Update Logic (Same Chat Priority)
