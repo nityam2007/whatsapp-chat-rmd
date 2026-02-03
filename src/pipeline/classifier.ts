@@ -3,12 +3,16 @@
  * 
  * Uses a small, fast LLM for initial classification of messages
  * into event types. Minimal token usage.
+ * 
+ * LOGGING: This module logs ALL LLM calls to database and log files.
  */
 
 import OpenAI from 'openai';
 import { ClassificationResult, EventType } from '../types/index.js';
 import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
+import { storeLLMCall } from '../database/sqlite.js';
+import { logLLM, logError, logSuccess, logWarn } from '../utils/loudLogger.js';
 
 const CLASSIFICATION_PROMPT = `You are a message classifier. Classify the following message into ONE of these categories:
 - new_event: Message describes a new event, meeting, appointment, reminder, DEADLINE, due date, task, or anything with a time/date reference
@@ -98,47 +102,153 @@ function getLLMClient(): { client: OpenAI; model: string; provider: string } {
 
 /**
  * Classifies a message using the small LLM
+ * 
+ * LOGS: All inputs and outputs are logged to database and files
  */
-export async function classifyMessage(content: string): Promise<ClassificationResult> {
-  logger.debug('Classifying message', { contentLength: content.length });
+export async function classifyMessage(content: string, messageId?: string): Promise<ClassificationResult> {
+  const startTime = Date.now();
+  const msgId = messageId || 'unknown';
+  
+  logger.debug('Classifying message', { contentLength: content.length, messageId: msgId });
 
   // If no API key configured (neither Gemini nor OpenAI), use fallback
   if (!config.geminiApiKey && !config.openaiApiKey) {
-    logger.warn('No LLM API key configured, using fallback classification');
-    return fallbackClassification(content);
+    logWarn('CLASSIFIER', 'No LLM API key configured, using fallback', { messageId: msgId });
+    const result = fallbackClassification(content);
+    logSuccess('CLASSIFIER', `Fallback classification: ${result.event_type}`, { confidence: result.confidence });
+    return result;
   }
 
+  const { client, model, provider } = getLLMClient();
+  const fullPrompt = CLASSIFICATION_PROMPT + content;
+  
   try {
-    const { client, model, provider } = getLLMClient();
-    
-    logger.debug('Using LLM provider for classification', { provider, model });
+    // Log the API call start
+    logLLM('classification', msgId, {
+      model,
+      provider,
+      prompt: fullPrompt,
+    });
     
     const response = await client.chat.completions.create({
       model,
       messages: [
         {
           role: 'user',
-          content: CLASSIFICATION_PROMPT + content,
+          content: fullPrompt,
         },
       ],
-      temperature: 0.1, // Low temperature for consistent classification
-      max_tokens: 50,
+      temperature: 0.1,
+      max_tokens: 2000,
     });
 
+    const durationMs = Date.now() - startTime;
     const responseText = response.choices[0]?.message?.content?.trim() || '';
+    const finishReason = response.choices[0]?.finish_reason || 'unknown';
+    const tokensUsed = response.usage?.total_tokens || 0;
+    
+    // Log the response
+    logLLM('classification', msgId, {
+      model,
+      provider,
+      prompt: fullPrompt,
+    }, {
+      response: responseText,
+      finishReason,
+      tokens: tokensUsed,
+      durationMs,
+    });
+
+    // Check if response was truncated
+    if (finishReason === 'length') {
+      logWarn('CLASSIFIER', 'Response truncated, using fallback', { responseText: responseText.slice(0, 50), messageId: msgId });
+      
+      // Store failed call in DB
+      storeLLMCall({
+        message_id: msgId,
+        call_type: 'classification',
+        model,
+        provider,
+        prompt: fullPrompt,
+        response: responseText,
+        finish_reason: finishReason,
+        tokens_total: tokensUsed,
+        duration_ms: durationMs,
+        success: false,
+        error: 'Response truncated',
+      });
+      
+      return fallbackClassification(content);
+    }
+    
+    // Check if response is empty
+    if (!responseText) {
+      logError('CLASSIFIER', 'Empty response from LLM', null, { messageId: msgId, model, provider });
+      
+      storeLLMCall({
+        message_id: msgId,
+        call_type: 'classification',
+        model,
+        provider,
+        prompt: fullPrompt,
+        response: '',
+        finish_reason: finishReason,
+        tokens_total: tokensUsed,
+        duration_ms: durationMs,
+        success: false,
+        error: 'Empty response',
+      });
+      
+      return fallbackClassification(content);
+    }
     
     // Parse JSON response
     const result = parseClassificationResponse(responseText);
     
-    logger.debug('Classification result', {
-      eventType: result.event_type,
-      confidence: result.confidence,
+    // Store successful call in DB
+    storeLLMCall({
+      message_id: msgId,
+      call_type: 'classification',
+      model,
       provider,
+      prompt: fullPrompt,
+      response: responseText,
+      response_parsed: JSON.stringify(result),
+      finish_reason: finishReason,
+      tokens_prompt: response.usage?.prompt_tokens || 0,
+      tokens_completion: response.usage?.completion_tokens || 0,
+      tokens_total: tokensUsed,
+      duration_ms: durationMs,
+      success: true,
+    });
+    
+    logSuccess('CLASSIFIER', `Classified as ${result.event_type}`, { 
+      confidence: result.confidence, 
+      messageId: msgId,
+      durationMs,
     });
 
     return result;
+    
   } catch (error) {
-    logger.error('Classification error', { error });
+    const durationMs = Date.now() - startTime;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    
+    // YELL about the error
+    logError('CLASSIFIER', 'LLM API call failed', error, { messageId: msgId, model, provider });
+    
+    // Store failed call in DB
+    storeLLMCall({
+      message_id: msgId,
+      call_type: 'classification',
+      model,
+      provider,
+      prompt: fullPrompt,
+      duration_ms: durationMs,
+      success: false,
+      error: errorMsg,
+    });
+    
     return fallbackClassification(content);
   }
 }
@@ -156,6 +266,7 @@ function parseClassificationResponse(response: string): ClassificationResult {
       // Validate event_type
       const validTypes: EventType[] = ['new_event', 'update_event', 'signal_event', 'irrelevant'];
       if (!validTypes.includes(parsed.event_type)) {
+        logWarn('CLASSIFIER', `Invalid event_type: ${parsed.event_type}, defaulting to irrelevant`);
         parsed.event_type = 'irrelevant';
       }
 
@@ -171,12 +282,14 @@ function parseClassificationResponse(response: string): ClassificationResult {
         event_type: parsed.event_type,
         confidence: parsed.confidence,
       };
+    } else {
+      logWarn('CLASSIFIER', 'No JSON found in response', { response: response.slice(0, 100) });
     }
-  } catch {
-    logger.warn('Failed to parse classification response', { response });
+  } catch (error) {
+    logError('CLASSIFIER', 'Failed to parse response JSON', error, { response: response.slice(0, 100) });
   }
 
-  // Default to irrelevant if parsing fails
+  // Default to irrelevant if parsing fails (use 0.3 to indicate parse failure)
   return {
     event_type: 'irrelevant',
     confidence: 0.3,
@@ -188,6 +301,8 @@ function parseClassificationResponse(response: string): ClassificationResult {
  * Uses comprehensive keyword-based heuristics
  */
 function fallbackClassification(content: string): ClassificationResult {
+  logWarn('CLASSIFIER', 'Using fallback (keyword-based) classification', { content: content.slice(0, 50) });
+  
   const lower = content.toLowerCase();
 
   // Check for cancel/update signals FIRST (highest priority)

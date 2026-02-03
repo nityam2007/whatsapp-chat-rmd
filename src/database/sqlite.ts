@@ -280,6 +280,34 @@ function runMigrations(db: Database.Database): void {
   // Reminders table columns
   try { db.exec(`ALTER TABLE reminders ADD COLUMN trigger_time_ist TEXT`); } catch { /* exists */ }
 
+  // Create llm_calls table - stores ALL LLM API calls with full input/output
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS llm_calls (
+      id TEXT PRIMARY KEY,
+      message_id TEXT,
+      call_type TEXT NOT NULL,
+      model TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      response TEXT,
+      response_parsed TEXT,
+      finish_reason TEXT,
+      tokens_prompt INTEGER DEFAULT 0,
+      tokens_completion INTEGER DEFAULT 0,
+      tokens_total INTEGER DEFAULT 0,
+      duration_ms INTEGER DEFAULT 0,
+      success INTEGER DEFAULT 1,
+      error TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_llm_calls_message_id ON llm_calls(message_id);
+    CREATE INDEX IF NOT EXISTS idx_llm_calls_call_type ON llm_calls(call_type);
+    CREATE INDEX IF NOT EXISTS idx_llm_calls_model ON llm_calls(model);
+    CREATE INDEX IF NOT EXISTS idx_llm_calls_success ON llm_calls(success);
+    CREATE INDEX IF NOT EXISTS idx_llm_calls_created_at ON llm_calls(created_at);
+  `);
+
   // Initialize pattern learning tables (auto-learning system)
   initPatternLearningTablesInternal(db);
 
@@ -1652,6 +1680,105 @@ export function updatePushSubscriptionLastUsed(endpoint: string): void {
   db.prepare('UPDATE push_subscriptions SET last_used = ? WHERE endpoint = ?').run(now, endpoint);
 }
 
+// ============================================================================
+// LLM CALL LOGGING
+// ============================================================================
+
+export interface LLMCallLog {
+  id?: string;
+  message_id?: string;
+  call_type: 'classification' | 'extraction' | 'other';
+  model: string;
+  provider: string;
+  prompt: string;
+  response?: string;
+  response_parsed?: string;
+  finish_reason?: string;
+  tokens_prompt?: number;
+  tokens_completion?: number;
+  tokens_total?: number;
+  duration_ms?: number;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Store an LLM API call with full input/output
+ */
+export function storeLLMCall(log: LLMCallLog): string {
+  const db = dbInstance || initDatabase();
+  const id = log.id || `llm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const now = getISTTimestamp();
+  
+  const stmt = db.prepare(`
+    INSERT INTO llm_calls (
+      id, message_id, call_type, model, provider, prompt, response, 
+      response_parsed, finish_reason, tokens_prompt, tokens_completion, 
+      tokens_total, duration_ms, success, error, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  
+  stmt.run(
+    id,
+    log.message_id || null,
+    log.call_type,
+    log.model,
+    log.provider,
+    log.prompt,
+    log.response || null,
+    log.response_parsed || null,
+    log.finish_reason || null,
+    log.tokens_prompt || 0,
+    log.tokens_completion || 0,
+    log.tokens_total || 0,
+    log.duration_ms || 0,
+    log.success ? 1 : 0,
+    log.error || null,
+    now
+  );
+  
+  return id;
+}
+
+/**
+ * Get recent LLM calls
+ */
+export function getLLMCalls(limit: number = 50, callType?: string): LLMCallLog[] {
+  const db = dbInstance || initDatabase();
+  
+  let sql = 'SELECT * FROM llm_calls';
+  const params: unknown[] = [];
+  
+  if (callType) {
+    sql += ' WHERE call_type = ?';
+    params.push(callType);
+  }
+  
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(limit);
+  
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(...params) as Record<string, unknown>[];
+  
+  return rows.map(row => ({
+    id: row.id as string,
+    message_id: row.message_id as string | undefined,
+    call_type: row.call_type as 'classification' | 'extraction' | 'other',
+    model: row.model as string,
+    provider: row.provider as string,
+    prompt: row.prompt as string,
+    response: row.response as string | undefined,
+    response_parsed: row.response_parsed as string | undefined,
+    finish_reason: row.finish_reason as string | undefined,
+    tokens_prompt: row.tokens_prompt as number,
+    tokens_completion: row.tokens_completion as number,
+    tokens_total: row.tokens_total as number,
+    duration_ms: row.duration_ms as number,
+    success: row.success === 1,
+    error: row.error as string | undefined,
+  }));
+}
+
 export default { 
   initDatabase, 
   getDatabase, 
@@ -1687,6 +1814,9 @@ export default {
   // Pipeline logs
   storePipelineLog,
   getPipelineLogs,
+  // LLM call logs
+  storeLLMCall,
+  getLLMCalls,
   // Archive functions
   archiveOldData,
   getArchiveMetadata,

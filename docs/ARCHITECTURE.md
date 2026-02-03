@@ -742,3 +742,10 @@ curl -X POST http://localhost:3000/api/learning/run
 | v0.6.0 | Pending confirmation, Gemini integration |
 | v0.7.0 | Dashboard UI redesign, Gemini 2.5 Flash |
 | v0.7.1 | Gemini 3 Flash upgrade, metrics fix |
+| v0.7.2 | Phone number fallback for unknown contacts |
+| v0.7.3 | Event update logic (same chat priority) |
+| v0.7.4 | IST timezone double-conversion bug fix |
+| v0.7.5 | Implicit update detection, technical docs |
+| v0.7.6 | Time-only messages fix |
+| v0.7.7 | Chat isolation, message direction tracking |
+| v0.7.8 | Comprehensive LLM logging, E2E test suite, max_tokens fix |

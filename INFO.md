@@ -6,7 +6,7 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.7.0 (Gemini 3 Flash + Improved Dashboard)
+**Current Version**: v0.7.8 (Comprehensive Logging + E2E Testing)
 
 ---
 
@@ -20,6 +20,8 @@
 - Gemini 3 Flash Preview for intelligent extraction
 - Professional webapp dashboard with metrics
 - Docker-based deployment with health checks
+- **Comprehensive LLM logging** (input/output to DB and files)
+- **E2E test suite** for pipeline validation
 
 ---
 
@@ -275,6 +277,7 @@ WHATSAPP-CHAT-RMD/
 │   └── utils/
 │       ├── logger.ts            # Winston logger
 │       ├── metrics.ts           # Pipeline metrics
+│       ├── loudLogger.ts        # Loud visual logging (v0.7.8)
 │       └── pipelineLogger.ts    # Pipeline stage logging
 ├── tests/
 │   ├── setup.ts                 # Test setup
@@ -308,7 +311,9 @@ WHATSAPP-CHAT-RMD/
 │   ├── start.sh                 # Start all services
 │   ├── stop.sh                  # Stop all services
 │   ├── whatsapp-login.sh        # WhatsApp QR login
-│   └── test-message.sh          # Send test message
+│   ├── test-message.sh          # Send test message
+│   ├── e2e-test.ts              # Full E2E test suite (v0.7.8)
+│   └── e2e-quick.ts             # Quick E2E test runner (v0.7.8)
 ├── docs/
 │   ├── ARCHITECTURE.md          # Architecture diagrams (Mermaid)
 │   └── diagrams/
@@ -318,7 +323,8 @@ WHATSAPP-CHAT-RMD/
 │       └── argus-architecture.png   # PNG export
 ├── data/
 │   ├── db/                      # SQLite database files
-│   └── vectors/                 # Vector index files
+│   ├── vectors/                 # Vector index files
+│   └── logs/                    # Pipeline & LLM logs (v0.7.8)
 ├── INFO.md                      # This file - Project index
 ├── RULES.md                     # Project rules and guidelines
 ├── CHANGELOG.md                 # Version changelog
@@ -349,6 +355,12 @@ WHATSAPP-CHAT-RMD/
 | `llm_extraction_logs` | LLM extraction history | id, raw_message, extracted_title, confidence |
 | `learned_patterns` | Auto-generated patterns | id, regex_pattern, hit_count, accuracy |
 | `pattern_learning_runs` | Learning job history | id, patterns_added, status |
+
+### Logging Tables (v0.7.8)
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `llm_calls` | All LLM API calls | id, call_type, model, prompt, response, tokens, duration_ms |
 
 ---
 
@@ -552,7 +564,15 @@ npm test -- --watch
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v0.7.0 | Current | Gemini 3 Flash, Improved Dashboard, Metrics Page |
+| v0.7.8 | Current | Comprehensive LLM Logging, E2E Test Suite, max_tokens Fix |
+| v0.7.7 | - | Chat Isolation, Message Direction Tracking |
+| v0.7.6 | - | Time-Only Messages Fix |
+| v0.7.5 | - | Implicit Update Detection, Technical Documentation |
+| v0.7.4 | - | IST Timezone Double-Conversion Bug Fix |
+| v0.7.3 | - | Event Update Logic (Same Chat Priority) |
+| v0.7.2 | - | Phone Number Fallback for Unknown Contacts |
+| v0.7.1 | - | Documentation Update |
+| v0.7.0 | - | Gemini 3 Flash, Improved Dashboard, Metrics Page |
 | v0.6.0 | - | Pending Confirmation, Contextual Triggers |
 | v0.5.0 | - | Auto-Learning System, 237 tests |
 | v0.4.1 | - | Metrics system (51 tests) |

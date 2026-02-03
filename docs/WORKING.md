@@ -310,32 +310,49 @@ The LLM needs context to understand:
 - What events were discussed recently
 - Whether a message is an update or new event
 
+### Chat Isolation
+**CRITICAL**: Each chat is completely isolated. Messages from different chats are NEVER mixed.
+- `chat_id` uniquely identifies each conversation (e.g., `919664833459@s.whatsapp.net`)
+- When looking for recent events to update, we ONLY check events from the SAME chat
+- Same message sent to different chats creates SEPARATE events
+
 ### Context Window
 ```typescript
 const CONTEXT_WINDOW_SIZE = 10;  // Last 10 messages from same chat
 ```
 
+### Message Direction
+Each message tracks:
+- `is_from_me`: true if sent by user, false if received
+- `sender`: Display name (contact name or phone number)
+- `chat_id`: Which conversation this message belongs to
+
 ### Context Format for LLM
 ```
 === CHAT CONTEXT ===
+Chat ID: 919664833459@s.whatsapp.net
 Chat with: Akshat
-Participants in this conversation: Me, Akshat
-Current message sender: Me (this is ME, the user of this system)
+Participants: Me, Akshat
 
-=== MESSAGE HISTORY ===
-[2026-02-03T16:30:39.000Z] Akshat: meeting tomorrow at 10 am
-[2026-02-03T16:30:51.000Z] Me: it got postponed to 11 AM now
+NOTE: This is an isolated conversation. All messages below are from THIS chat only.
+Messages from other chats are NOT included.
+
+=== MESSAGE HISTORY (Last 10 messages from this chat) ===
+[3/2/2026, 10:00:00 pm] Akshat → Me: meeting tomorrow at 10 am
+[3/2/2026, 10:01:00 pm] Me → Akshat: ok
 
 === CURRENT MESSAGE (EXTRACT EVENT FROM THIS) ===
-Sender: Me (ME - the user)
-Time: 2026-02-03T16:34:50.000Z
-Content: now today at 10 PM
+Direction: Me → Akshat
+Sender: Me (ME - the user of this system)
+Time (IST): 3/2/2026, 10:30:00 pm
+Content: now at 5 PM
 ```
 
 ### Sender Identification
 - Messages from `is_from_me=true` → labeled as "Me"
 - Messages from contacts → use pushName or phone number as fallback
 - Never show "Unknown" - always use phone number if name unavailable
+- Direction shows "Me → Contact" or "Contact → Me"
 
 ---
 
@@ -492,11 +509,74 @@ DUPLICATE_SIMILARITY_THRESHOLD = 0.85;  // FAISS dedup threshold
 | `src/pipeline/contextBuilder.ts` | Build context from recent messages |
 | `src/pipeline/ruleEngine.ts` | Fast regex-based extraction |
 | `src/pipeline/extractor.ts` | LLM-based extraction |
+| `src/pipeline/classifier.ts` | Event type classification |
 | `src/pipeline/eventRouter.ts` | Route & store events |
 | `src/database/sqlite.ts` | SQLite database operations |
 | `src/vector/faiss.ts` | FAISS vector store |
 | `src/scheduler/index.ts` | Reminder scheduling |
 | `src/notifications/index.ts` | Push notification sending |
+| `src/utils/loudLogger.ts` | Loud visual logging (v0.7.8) |
+
+---
+
+## Logging & Debugging (v0.7.8)
+
+### LLM Call Logging
+
+All LLM API calls are logged to:
+1. **Console** - Visible in terminal
+2. **Files** - `data/logs/llm.log` and `data/logs/llm-full.log`
+3. **Database** - `llm_calls` table
+
+### Log File Locations
+
+| File | Contents |
+|------|----------|
+| `data/logs/pipeline.log` | All pipeline events |
+| `data/logs/llm.log` | LLM calls summary |
+| `data/logs/llm-full.log` | Full prompts and responses |
+| `data/logs/errors.log` | All errors |
+| `data/logs/warnings.log` | All warnings |
+| `data/logs/message-flow.log` | Message tracking |
+
+### Quick Debug Commands
+
+```bash
+# Check recent errors
+cat data/logs/errors.log | tail -20
+
+# Check LLM calls in DB
+sqlite3 data/db/events.db "SELECT * FROM llm_calls ORDER BY created_at DESC LIMIT 5;"
+
+# Watch pipeline in real-time
+tail -f data/logs/pipeline.log
+
+# Run E2E test
+npm run e2e-quick 1
+```
+
+### The llm_calls Table
+
+```sql
+CREATE TABLE llm_calls (
+  id TEXT PRIMARY KEY,
+  message_id TEXT,
+  call_type TEXT NOT NULL,  -- 'classification' | 'extraction'
+  model TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  response TEXT,
+  response_parsed TEXT,
+  finish_reason TEXT,
+  tokens_prompt INTEGER,
+  tokens_completion INTEGER,
+  tokens_total INTEGER,
+  duration_ms INTEGER,
+  success INTEGER,
+  error TEXT,
+  created_at TEXT
+);
+```
 
 ---
 
@@ -526,4 +606,4 @@ DUPLICATE_SIMILARITY_THRESHOLD = 0.85;  // FAISS dedup threshold
 
 ---
 
-*Last updated: v0.7.5 - Feb 3, 2026*
+*Last updated: v0.7.8 - Feb 3, 2026*

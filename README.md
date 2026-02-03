@@ -4,7 +4,7 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.7.5 | **LLM**: Gemini 3 Flash Preview
+**Current Version**: v0.7.8 | **LLM**: Gemini 3 Flash Preview
 
 ## Quick Start (One Command)
 
@@ -264,21 +264,31 @@ WHATSAPP-CHAT-RMD/
 │   ├── start.sh            # Start all services
 │   ├── stop.sh             # Stop all services
 │   ├── whatsapp-login.sh   # WhatsApp QR login
-│   └── test-message.sh     # Send test message
+│   ├── test-message.sh     # Send test message
+│   ├── e2e-test.ts         # Full E2E test suite
+│   └── e2e-quick.ts        # Quick E2E test runner
 ├── src/
 │   ├── index.ts            # Main entry point
 │   ├── server.ts           # Express server
 │   ├── pipeline/           # AI processing pipeline
 │   ├── database/           # SQLite storage
-│   └── webhook/            # Webhook handlers
+│   ├── webhook/            # Webhook handlers
+│   └── utils/
+│       ├── logger.ts       # Winston logger
+│       ├── metrics.ts      # Pipeline metrics
+│       └── loudLogger.ts   # Loud visual logging
 ├── webapp/
 │   ├── server.ts           # Push notification server
 │   └── public/             # Web interface
 ├── docs/
 │   ├── ARCHITECTURE.md     # Mermaid diagrams
+│   ├── WORKING.md          # Technical documentation
 │   └── diagrams/           # Individual .mmd files
 ├── docker/                 # Docker configuration
-├── data/                   # Runtime data (auto-created)
+├── data/
+│   ├── db/                 # SQLite database
+│   ├── vectors/            # Vector index files
+│   └── logs/               # Pipeline & LLM logs
 └── logs/                   # Log files (auto-created)
 ```
 
@@ -295,6 +305,10 @@ npm run test
 
 # Build for production
 npm run build
+
+# Run E2E tests
+npm run e2e-test          # Full test suite (8 scenarios)
+npm run e2e-quick 1       # Quick single test (scenario 1-8)
 ```
 
 ---
@@ -322,6 +336,8 @@ pkill -f "tsx watch"
 ```bash
 tail -f logs/rmd.log      # Main service
 tail -f logs/webapp.log   # Push notification webapp
+tail -f data/logs/errors.log   # Errors only
+tail -f data/logs/llm.log      # LLM calls summary
 ```
 
 ---

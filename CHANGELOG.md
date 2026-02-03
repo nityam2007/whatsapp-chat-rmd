@@ -5,6 +5,134 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.8] - 2026-02-03
+
+### Added - Comprehensive Logging System & E2E Testing
+
+Major additions to improve debugging, observability, and testing of the AI pipeline.
+
+#### 1. LLM Call Logging System
+
+**Problem**: When LLM responses were truncated or malformed, there was no way to diagnose the issue.
+
+**Solution**: Added comprehensive LLM input/output logging to both database and files.
+
+**New Database Table** (`llm_calls`):
+```sql
+CREATE TABLE llm_calls (
+  id TEXT PRIMARY KEY,
+  message_id TEXT,
+  call_type TEXT NOT NULL,  -- 'classification' | 'extraction' | 'other'
+  model TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  response TEXT,
+  response_parsed TEXT,
+  finish_reason TEXT,
+  tokens_prompt INTEGER,
+  tokens_completion INTEGER,
+  tokens_total INTEGER,
+  duration_ms INTEGER,
+  success INTEGER,
+  error TEXT,
+  created_at TEXT
+);
+```
+
+**New Functions** (`sqlite.ts`):
+- `storeLLMCall(log)` - Store LLM API call details
+- `getLLMCalls(limit, callType)` - Retrieve LLM calls for analysis
+
+#### 2. Loud Logger Utility
+
+**New File**: `src/utils/loudLogger.ts`
+
+Visual logging system with:
+- `logStep()` - Pipeline step markers with emojis
+- `logLLM()` - LLM input/output logging (console + file)
+- `logSuccess()` - Green checkmark success logs
+- `logWarn()` - Yellow warning logs
+- `logError()` - **YELLING** error logs with visual separators
+- `logData()` - Data collection/debugging logs
+- `logMessageFlow()` - Message tracking through pipeline
+
+**Log Files** (in `data/logs/`):
+- `pipeline.log` - All pipeline events
+- `llm.log` - LLM calls summary
+- `llm-full.log` - Full prompts and responses
+- `errors.log` - All errors (easy to grep)
+- `warnings.log` - All warnings
+- `message-flow.log` - Message tracking
+
+#### 3. E2E Test Scripts
+
+**New Files**:
+- `scripts/e2e-test.ts` - Comprehensive test with 8 scenarios
+- `scripts/e2e-quick.ts` - Quick single-scenario runner
+
+**npm Scripts**:
+```json
+"e2e-test": "tsx scripts/e2e-test.ts",
+"e2e-quick": "tsx scripts/e2e-quick.ts"
+```
+
+**Test Scenarios**:
+1. Simple event: "meeting tomorrow at 3 PM"
+2. Hinglish event: "kal 5 baje meeting hai"
+3. Reminder: "remind me to call John at 6pm"
+4. Task: "bring milk on the way home"
+5. Update: "postpone the meeting to 4 PM"
+6. Cancel: "cancel the meeting"
+7. Irrelevant: "lol that's funny"
+8. Time-only update: "now at 10 PM" (implicit update)
+
+### Fixed - Gemini API Truncation Bug
+
+**Problem**: Messages like "meeting tomorrow at 3 PM" were being classified as `irrelevant` with confidence 0.3 (the parse failure indicator).
+
+**Root Cause**: Gemini's `gemini-3-flash-preview` model has a "thinking mode" that uses internal tokens. With `max_tokens: 50`, the response was truncated (`finish_reason: "length"`), resulting in incomplete JSON like `{"event_type": "`.
+
+**Fix**:
+- `classifier.ts`: Changed `max_tokens` from 50 → 2000
+- `extractor.ts`: Changed `max_tokens` from 300 → 2000
+
+#### Files Added
+```
+src/utils/loudLogger.ts       # NEW - Loud logging utility
+scripts/e2e-test.ts           # NEW - Full E2E test suite
+scripts/e2e-quick.ts          # NEW - Quick E2E test runner
+```
+
+#### Files Modified
+```
+src/database/sqlite.ts        # Added llm_calls table and functions
+src/pipeline/classifier.ts    # Added logging, fixed max_tokens
+src/pipeline/extractor.ts     # Fixed max_tokens
+package.json                  # Added e2e-test and e2e-quick scripts
+docs/WORKING.md               # Updated documentation
+CHANGELOG.md                  # This entry
+```
+
+#### Quick Commands
+```bash
+# Run quick E2E test
+npm run e2e-quick 1
+
+# Run full E2E test suite
+npm run e2e-test
+
+# Check LLM calls in DB
+sqlite3 data/db/events.db "SELECT * FROM llm_calls ORDER BY created_at DESC LIMIT 5;"
+
+# Check error logs
+cat data/logs/errors.log
+
+# Check LLM full logs
+cat data/logs/llm-full.log
+```
+
+---
+
 ## [0.7.7] - 2026-02-03
 
 ### Fixed - Chat Isolation & Message Direction Tracking

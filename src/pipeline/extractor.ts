@@ -302,7 +302,7 @@ export async function extractEvent(
         },
       ],
       temperature: 0.1,
-      max_tokens: 300,
+      max_tokens: 2000, // High limit for Gemini thinking mode - only uses what's needed
     });
 
     const responseText = response.choices[0]?.message?.content?.trim() || '';

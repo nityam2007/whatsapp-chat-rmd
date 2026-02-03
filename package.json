@@ -23,7 +23,9 @@
     "docker:up": "docker-compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker-compose -f docker/docker-compose.yml down",
     "docker:logs": "docker-compose -f docker/docker-compose.yml logs -f",
-    "orchestrator:dev": "tsx watch src/orchestrator/index.ts"
+    "orchestrator:dev": "tsx watch src/orchestrator/index.ts",
+    "e2e-test": "tsx scripts/e2e-test.ts",
+    "e2e-quick": "tsx scripts/e2e-quick.ts"
   },
   "keywords": [
     "whatsapp",

@@ -29,7 +29,7 @@ git push origin main
 | Version bump | CHANGELOG.md, INFO.md, src/server.ts banner |
 
 ### Version Info
-- **Current Version**: v0.7.0
+- **Current Version**: v0.7.8
 - **LLM Model**: Gemini 3 Flash Preview (`gemini-3-flash-preview`)
 - **Tests**: 237 passing
 
@@ -234,6 +234,7 @@ When resetting the database for fresh testing, preserve valuable data:
 | `reminders` | CLEAR | Old scheduled reminders |
 | `pipeline_logs` | CLEAR | Debug/audit logs |
 | `llm_extraction_logs` | CLEAR | LLM call logs |
+| `llm_calls` | CLEAR | LLM API call logs (v0.7.8) |
 | `pattern_learning_runs` | CLEAR | Learning job history |
 | `archive_metadata` | CLEAR | Archive tracking |
 
@@ -244,6 +245,7 @@ DELETE FROM events;
 DELETE FROM reminders;
 DELETE FROM pipeline_logs;
 DELETE FROM llm_extraction_logs;
+DELETE FROM llm_calls;
 DELETE FROM pattern_learning_runs;
 DELETE FROM archive_metadata;
 VACUUM;
@@ -545,3 +547,82 @@ metrics.recordTiming({
 - Log final summary on shutdown
 - Configurable via `METRICS_LOG_INTERVAL` env var
 - Set to 0 to disable
+
+---
+
+## Logging Best Practices (v0.7.8)
+
+### Use Loud Logger for Visibility
+```typescript
+import { logStep, logLLM, logError, logSuccess, logWarn } from '../utils/loudLogger.js';
+
+// Pipeline steps
+logStep('HEURISTIC', 'passed', { score: 12.5 });
+
+// LLM calls (logs to console + file + DB)
+logLLM('classification', {
+  model: 'gemini-3-flash-preview',
+  prompt: 'Classify this message...',
+  response: '{"event_type": "new_event"}',
+  tokens: { prompt: 100, completion: 50 },
+  duration_ms: 250
+});
+
+// Errors - YELL loudly
+logError('EXTRACTION', 'Failed to parse JSON', { response: rawResponse });
+
+// Success
+logSuccess('EVENT_CREATED', { id: 'abc123', title: 'Meeting' });
+
+// Warnings
+logWarn('LOW_CONFIDENCE', { confidence: 0.4 });
+```
+
+### Store LLM Calls in Database
+```typescript
+import { storeLLMCall } from '../database/sqlite.js';
+
+await storeLLMCall({
+  id: crypto.randomUUID(),
+  message_id: messageId,
+  call_type: 'classification',
+  model: 'gemini-3-flash-preview',
+  provider: 'gemini',
+  prompt: fullPrompt,
+  response: rawResponse,
+  response_parsed: JSON.stringify(parsed),
+  finish_reason: 'stop',
+  tokens_prompt: usage.prompt_tokens,
+  tokens_completion: usage.completion_tokens,
+  tokens_total: usage.total_tokens,
+  duration_ms: endTime - startTime,
+  success: 1,
+  error: null,
+  created_at: new Date().toISOString()
+});
+```
+
+### Log File Locations
+| File | Purpose |
+|------|---------|
+| `data/logs/pipeline.log` | All pipeline events |
+| `data/logs/llm.log` | LLM calls summary |
+| `data/logs/llm-full.log` | Full prompts and responses |
+| `data/logs/errors.log` | All errors (easy to grep) |
+| `data/logs/warnings.log` | All warnings |
+| `data/logs/message-flow.log` | Message tracking |
+
+### Quick Debug Commands
+```bash
+# Check recent errors
+cat data/logs/errors.log | tail -20
+
+# Check LLM calls
+sqlite3 data/db/events.db "SELECT id, call_type, model, success, error FROM llm_calls ORDER BY created_at DESC LIMIT 10;"
+
+# Watch pipeline in real-time
+tail -f data/logs/pipeline.log
+
+# Check LLM full responses
+cat data/logs/llm-full.log | tail -50
+```
