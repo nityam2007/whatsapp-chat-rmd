@@ -23,25 +23,45 @@ const HEURISTIC_THRESHOLD = config.heuristicThreshold ?? 1;
 const SIGNAL_KEYWORDS = {
   // Time-related words
   time: [
-    // Days
-    'today', 'tomorrow', 'yesterday', 'tonight', 'tonite', 'tmrw', 'tmr', 'tomo',
-    'morning', 'afternoon', 'evening', 'night', 'noon', 'midnight',
-    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
-    'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
-    // Months
-    'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
-    'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
+    // Days - with common misspellings and typos
+    'today', 'tday', 'todya', '2day', '2dy',
+    'tomorrow', 'tommorow', 'tommorrow', 'tomorow', 'tomoro', 'tomm', 'tmrw', 'tmr', 'tomo', 'tmro', 'tmrrow', '2morrow', '2mrw',
+    'yesterday', 'yest', 'yday', 'yestrday',
+    'tonight', 'tonite', 'tonigt', '2nite', '2night',
+    'morning', 'mornin', 'mrng', 'morn',
+    'afternoon', 'aftrn', 'aftrnoon',
+    'evening', 'evng', 'eve', 'eveing',
+    'night', 'nite', 'nigt',
+    'noon', 'midnight', 'midnite',
+    // Days of week - with misspellings
+    'monday', 'mon', 'mnday',
+    'tuesday', 'tue', 'tues', 'tusday',
+    'wednesday', 'wed', 'weds', 'wednsday',
+    'thursday', 'thu', 'thur', 'thurs', 'thursdy',
+    'friday', 'fri', 'frday', 'friady',
+    'saturday', 'sat', 'satrday',
+    'sunday', 'sun', 'sundy',
+    // Months - with misspellings
+    'january', 'jan', 'febuary', 'february', 'feb',
+    'march', 'mar', 'april', 'apr',
+    'may', 'june', 'jun', 'july', 'jul',
+    'august', 'aug', 'september', 'sep', 'sept',
+    'october', 'oct', 'november', 'nov',
+    'december', 'dec',
     // Time units
-    'am', 'pm', 'o\'clock', 'oclock', 'hour', 'hours', 'hr', 'hrs',
-    'minute', 'minutes', 'min', 'mins',
+    'am', 'pm', 'a.m', 'p.m', 'a.m.', 'p.m.',
+    'o\'clock', 'oclock', 'oclck',
+    'hour', 'hours', 'hr', 'hrs', 'hourse',
+    'minute', 'minutes', 'min', 'mins', 'minuts',
     'second', 'seconds', 'sec', 'secs',
     // Relative time
-    'week', 'month', 'year', 'next', 'last', 'this', 'coming', 'following',
-    'soon', 'later', 'early', 'late', 'sharp', 'around', 'about', 'by', 'until', 'before', 'after',
+    'week', 'wek', 'month', 'mnth', 'year', 'yr',
+    'next', 'nxt', 'last', 'lst', 'this', 'coming', 'comng', 'following',
+    'soon', 'later', 'latr', 'early', 'late', 'sharp', 'around', 'about', 'by', 'until', 'before', 'after',
     'asap', 'eod', 'eow', 'end of day', 'end of week',
     // Casual time expressions
     'half past', 'quarter past', 'quarter to', 'ish', 'esque',
-    'whenever', 'sometime', 'someday', 'anytime',
+    'whenever', 'whenevr', 'sometime', 'someday', 'anytime',
     // Hindi/Hinglish time words
     'kal', 'aaj', 'abhi', 'baad', 'baad mein', 'shaam', 'subah', 'raat', 'dopahar',
     'parso', 'parson', 'narsoon', // day after tomorrow, day after that
@@ -66,21 +86,39 @@ const SIGNAL_KEYWORDS = {
 
   // Event types
   event: [
-    // Formal events
-    'meeting', 'call', 'appointment', 'event', 'party', 'birthday', 'wedding', 'conference',
-    'presentation', 'interview', 'session', 'class', 'lecture', 'seminar', 'workshop',
+    // Formal events - with common misspellings
+    'meeting', 'meetng', 'meating', 'meting',
+    'call', 'cal',
+    'appointment', 'apointment', 'appointmnt',
+    'event', 'evnt',
+    'party', 'prty', 'partee',
+    'birthday', 'bday', 'b-day', 'bithday',
+    'wedding', 'wedng',
+    'conference', 'conf', 'confrence',
+    'presentation', 'ppt', 'presentaion',
+    'interview', 'intrvw', 'intervew',
+    'session', 'sesion',
+    'class', 'clas', 'lecture', 'lectr', 'seminar', 'workshop',
     // Social events
-    'dinner', 'lunch', 'breakfast', 'brunch', 'date', 'hangout', 'get together', 'gathering',
-    'coffee', 'tea', 'drinks', 'movie', 'film', 'show', 'concert', 'game', 'match',
+    'dinner', 'dinnr', 'lunch', 'lnch', 'breakfast', 'brekfast', 'brunch', 'date', 'hangout', 'hang out', 'get together', 'gathering',
+    'coffee', 'coffe', 'tea', 'drinks', 'movie', 'film', 'show', 'concert', 'game', 'match',
     // Travel
-    'flight', 'trip', 'travel', 'vacation', 'holiday', 'train', 'bus', 'cab', 'uber', 'ola',
-    // Work/Academic
-    'deadline', 'due', 'submission', 'exam', 'test', 'quiz', 'viva', 'review',
-    'standup', 'sync', 'catchup', 'catch up', 'one on one', '1:1', '1-1',
+    'flight', 'flght', 'trip', 'travel', 'travl', 'vacation', 'vacay', 'holiday', 'train', 'bus', 'cab', 'uber', 'ola',
+    // Work/Academic - with misspellings
+    'deadline', 'deadlin', 'dedline', 'dead line',
+    'due', 'du', 'dew',
+    'submission', 'submision', 'submit',
+    'exam', 'exm', 'exams', 'examination',
+    'test', 'tst', 'tests',
+    'quiz', 'quize', 'viva', 'review', 'revew',
+    'assignment', 'assignmnt', 'asignment', 'asgmt', 'assgnment',
+    'project', 'projct', 'prject',
+    'homework', 'hw', 'homwork',
+    'standup', 'sync', 'synk', 'catchup', 'catch up', 'one on one', '1:1', '1-1',
     // Medical
-    'doctor', 'dentist', 'appointment', 'checkup', 'check up', 'hospital', 'clinic',
+    'doctor', 'doc', 'dr', 'dentist', 'checkup', 'check up', 'hospital', 'clinic',
     // Tasks
-    'task', 'todo', 'to do', 'to-do', 'errand', 'chore',
+    'task', 'tsk', 'todo', 'to do', 'to-do', 'errand', 'chore',
     // Hindi event words
     'baithak', 'milna', 'mulakat', 'dawat', 'shaadi', 'function', 'program',
     'pariksha', 'test', 'safar', 'yatra',
@@ -92,22 +130,23 @@ const SIGNAL_KEYWORDS = {
     'bhetat', 'lagna', 'san', 'pariksha', // meeting, wedding, festival, exam
   ],
 
-  // Action verbs (casual reminders)
+  // Action verbs (casual reminders) - with misspellings
   action: [
     // Reminder actions
-    'remind', 'reminder', 'remember', 'don\'t forget', 'dont forget', 'do not forget',
+    'remind', 'remnd', 'reminder', 'remindr', 'remember', 'remembr', 'rember',
+    'don\'t forget', 'dont forget', 'do not forget', 'dnt forget',
     'note', 'note down', 'jot down', 'write down',
     // Scheduling
-    'schedule', 'scheduled', 'plan', 'planned', 'planning', 'book', 'booking', 'reserve', 'reservation',
+    'schedule', 'schedul', 'shedule', 'scheduled', 'plan', 'planed', 'planned', 'planning', 'book', 'booking', 'reserve', 'reservation',
     // Meeting actions
-    'meet', 'meeting', 'join', 'attend', 'attending', 'coming', 'going',
+    'meet', 'met', 'meeting', 'join', 'joing', 'attend', 'atend', 'attending', 'coming', 'comng', 'going', 'goin',
     // Communication
-    'call', 'calling', 'ring', 'phone', 'text', 'message', 'msg', 'whatsapp', 'email', 'mail',
+    'call', 'cal', 'calling', 'ring', 'phone', 'text', 'txt', 'message', 'msg', 'msge', 'whatsapp', 'wa', 'email', 'mail',
     // Physical actions (errands)
-    'pick up', 'pickup', 'drop off', 'dropoff', 'drop', 'collect', 'fetch',
-    'bring', 'take', 'carry', 'get', 'buy', 'purchase', 'order',
-    'return', 'submit', 'send', 'deliver', 'post', 'courier',
-    'pay', 'payment', 'transfer', 'deposit', 'withdraw',
+    'pick up', 'pickup', 'pic up', 'drop off', 'dropoff', 'drop', 'collect', 'colect', 'fetch',
+    'bring', 'brng', 'take', 'carry', 'get', 'buy', 'purchase', 'order', 'ordr',
+    'return', 'retrn', 'submit', 'submitt', 'send', 'snd', 'deliver', 'delivr', 'post', 'courier',
+    'pay', 'paymnt', 'payment', 'transfer', 'deposit', 'withdraw',
     'clean', 'wash', 'iron', 'cook', 'prepare', 'make',
     // Status changes
     'start', 'begin', 'end', 'finish', 'complete', 'done',
@@ -265,7 +304,7 @@ const SIGNAL_KEYWORDS = {
 const STRONG_PATTERNS = [
   // Time patterns
   /\d{1,2}[:\.\-]\d{2}\s*(am|pm)?/i,                              // 10:30, 10.30 AM
-  /\d{1,2}\s*(am|pm)/i,                                           // 10am, 10 pm
+  /\d{1,2}\s*(am|pm|a\.m|p\.m)/i,                                 // 10am, 10 pm, 10a.m
   /\d{1,2}(st|nd|rd|th)\s*(of\s*)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i, // 25th of Dec
   /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s*\d{1,2}/i, // Dec 25
   /\d{1,2}\/\d{1,2}(\/\d{2,4})?/i,                                // 12/25 or 12/25/2024
@@ -274,6 +313,13 @@ const STRONG_PATTERNS = [
   /(half\s*past|quarter\s*(past|to))\s*\d{1,2}/i,                 // half past 3
   /in\s+\d+\s*(hour|hr|minute|min|day|week|month)/i,              // in 2 hours
   /\d+\s*(hour|hr|minute|min|day|week|month)\s*(from\s*now|later|ago)/i, // 2 hours later
+  
+  // Deadline/Due patterns - IMPORTANT for academic
+  /due\s+(today|tomorrow|tom+or+ow|tmr+w?|next|this|by|on)/i,     // due tomorrow, due by
+  /\b(assignment|project|homework|hw|task|exam|test)\s+(due|is\s+due)/i,  // assignment due
+  /deadline\s+(is\s+)?(today|tomorrow|tom+or+ow|tmr+w?|next|this|on)/i,   // deadline tomorrow
+  /submit\s+(by|before|on)/i,                                     // submit by
+  /\bhave\s+(a|an)?\s*(assignment|project|homework|exam|test|deadline)/i, // have assignment
   
   // Reminder patterns
   /remind\s*(me|us)?/i,                                           // remind me
@@ -284,8 +330,8 @@ const STRONG_PATTERNS = [
   
   // Meeting patterns
   /let'?s\s+(meet|go|have|catch|grab|do)/i,                       // let's meet
-  /see\s+you\s+(at|on|tomorrow|later|then)/i,                     // see you at
-  /meeting\s+(at|on|with|about)/i,                                // meeting at/with
+  /see\s+you\s+(at|on|tomorrow|tom+or+ow|later|then)/i,           // see you at
+  /meet(ing)?\s+(at|on|with|about|tom+or+ow|today)/i,             // meeting at/with/tomorrow
   /scheduled\s+(for|at|on)/i,                                     // scheduled for
   /appointment\s+(at|on|with|for)/i,                              // appointment with
   /call\s+(at|with|me|you)/i,                                     // call at 5
