@@ -422,6 +422,8 @@ function validateAndNormalize(data: Record<string, unknown>): ExtractedEvent {
     participants,
     created_by: createdBy,
     confidence,
+    context_tags: [],  // Will be populated by context extractor
+    trigger_keywords: [],  // Will be populated by context extractor
   };
 }
 
@@ -479,6 +481,8 @@ function createEmptyEvent(): ExtractedEvent {
     participants: [],
     created_by: null,
     confidence: 0,
+    context_tags: [],
+    trigger_keywords: [],
   };
 }
 

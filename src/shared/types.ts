@@ -37,6 +37,10 @@ export const ExtractedEventSchema = z.object({
   participants: z.array(z.string()).optional().default([]),  // Names of people involved in the event
   created_by: z.string().nullable().optional(),              // Who sent the message
   confidence: z.number().min(0).max(1),
+  // Proactive trigger fields
+  context_tags: z.array(z.string()).optional().default([]),  // Keywords for proactive matching: ["goa", "shopping"]
+  location: z.string().nullable().optional(),                 // Primary location: "goa", "mumbai", "office"
+  trigger_keywords: z.array(z.string()).optional().default([]), // Keywords that should trigger reminder
 });
 export type ExtractedEvent = z.infer<typeof ExtractedEventSchema>;
 
@@ -73,6 +77,12 @@ export const StoredEventSchema = z.object({
   participants: z.array(z.string()).optional().default([]),  // People involved in the event
   created_by: z.string().nullable().optional(),      // Who created/sent the event message
   user_id: z.string().optional().default('default'),  // Optional for single-user mode
+  // Proactive trigger fields
+  context_tags: z.array(z.string()).optional().default([]),  // Keywords for proactive matching
+  location: z.string().nullable().optional(),                 // Primary location
+  trigger_keywords: z.array(z.string()).optional().default([]), // Keywords that should trigger reminder
+  proactive_triggered: z.boolean().optional().default(false),   // Has proactive reminder been sent?
+  proactive_trigger_count: z.number().optional().default(0),    // How many times triggered
   created_at: z.string(),
   updated_at: z.string(),
 });

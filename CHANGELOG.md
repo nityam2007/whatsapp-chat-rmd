@@ -5,6 +5,267 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.8.1] - 2026-02-03
+
+### Fixed - Proactive Triggers & Push Notification Sync
+
+Major fixes to make the proactive trigger system work end-to-end.
+
+#### 1. Push Notification Subscription Sync
+
+**Problem**: Webapp stored push subscriptions in a JSON file, but the main RMD server read from SQLite. They were disconnected, causing push notifications to never be sent.
+
+**Solution**: 
+- Added push subscription API endpoints to main server (`src/server.ts`):
+  - `GET /api/push/vapid-key` - Get VAPID public key
+  - `POST /api/push/subscribe` - Register push subscription
+  - `POST /api/push/unsubscribe` - Remove subscription
+  - `POST /api/push/test` - Send test notification
+  - `GET /api/push/status` - Check push configuration
+- Updated webapp to forward subscriptions to main RMD server on subscribe/unsubscribe
+- Added auto-sync on webapp startup (3 second delay for RMD server readiness)
+- Added manual sync endpoint `/api/sync-subscriptions`
+- Added "Sync Now" button in webapp Push Notifications page
+- Added RMD push status display showing subscription count from main server
+
+#### 2. Proactive Trigger Keyword Matching
+
+**Problem**: "just reached goa" wasn't triggering the "Get cashew from goa" event because FAISS fallback embeddings don't work well for semantic similarity.
+
+**Solution**: Added keyword-based matching as a fallback layer:
+- New `keywordContextMatch()` function in `proactiveTrigger.ts`
+- Extracts significant words from messages and events
+- Matches location keywords (e.g., "goa" in both messages)
+- Detects location trigger patterns ("reached", "arrived", "at", etc.)
+- Confidence boost for location triggers
+
+**New Matching Strategy (3 stages)**:
+```
+Stage 1: FAISS vector similarity (fast, works with OpenAI embeddings)
+Stage 1.5: Keyword matching (fallback when FAISS finds nothing)
+Stage 2: Gemini LLM (smart, for medium-confidence matches)
+```
+
+#### 3. Pipeline Live View in Dashboard
+
+**New page**: Pipeline Live View in webapp dashboard
+- Visual flow diagram showing all 13 pipeline stages with icons
+- Live activity feed showing recent messages and their pipeline stages
+- Auto-refresh toggle (2-second interval)
+- Stage counts displayed on each step
+
+#### 4. Build Error Fix
+
+**Fixed**: Type error in `proactiveTrigger.ts` line 225
+```typescript
+// Changed from:
+suggestedAction: event.title,
+// To:
+suggestedAction: event.title || undefined,
+```
+
+#### 5. Database Stats Enhancement
+
+- Added `message_embeddings` and `semantic_patterns` tables to database stats display
+- All 13 database tables now visible in the dashboard
+
+#### 6. Token Compression Verification
+
+- Verified token compression is working correctly in the pipeline
+- Compression correctly skips for small messages (< 2000 tokens)
+- Uses tiktoken for accurate token counting
+
+#### Files Modified
+```
+src/server.ts                    # Added push subscription API endpoints
+src/services/proactiveTrigger.ts # Added keyword matching, verbose logging
+src/database/sqlite.ts           # Added message_embeddings, semantic_patterns to stats
+webapp/server.ts                 # Subscription sync to RMD server, auto-sync, /api/rmd-push-status
+webapp/public/index.html         # Pipeline Live page, sync UI in notifications
+webapp/public/css/styles.css     # Pipeline visualization styles
+webapp/public/js/app.js          # Pipeline live functions, sync function, RMD status
+webapp/public/js/api.js          # Added fetchRmdPushStatus()
+```
+
+#### To Test Proactive Triggers
+1. Start servers: `npm run dev` and `npm run webapp`
+2. Go to webapp -> Push Notifications -> click "Sync Now"
+3. Create event: send "get cashew from goa" via WhatsApp
+4. Wait for event to be created
+5. Send "just reached goa" via WhatsApp
+6. Should receive push notification for the cashew event
+
+---
+
+## [0.8.0] - 2026-02-03
+
+### Added - Proactive Trigger System
+
+Major new feature: The system is now **proactive**, not just reactive. When you send ANY message, Argus intelligently checks if it relates to any pending tasks and reminds you automatically.
+
+#### The Problem (Client Feedback)
+> "The system is just like Notion - it only stores tasks. When I say 'reached Goa', it should remind me about 'Get cashew from Goa for Priya'."
+
+#### The Solution: Intelligent Context Matching
+
+Uses Gemini's 1M token context window to understand relationships between incoming messages and pending tasks. This is NOT keyword matching - it's intelligent semantic understanding.
+
+**Examples of what it can detect:**
+| Message | Triggers |
+|---------|----------|
+| "Just reached Goa" | "Get cashew from Goa for Priya" |
+| "Meeting with John went well" | "Ask John about the project" |
+| "Feeling better now" | "Schedule doctor follow-up when feeling better" |
+| "The client approved the design" | "Send invoice after approval" |
+| "Finally got some free time" | Any pending leisure tasks |
+
+#### New Services Created
+
+**1. Proactive Trigger Service** (`src/services/proactiveTrigger.ts`)
+- `checkForProactiveTriggers()` - Called for EVERY incoming message
+- Uses Gemini to intelligently match messages against ALL pending events
+- Sends reminders via Web Push notification
+- Tracks trigger counts to avoid spam
+
+**2. Context Matcher Service** (`src/services/contextMatcher.ts`)
+- `smartContextMatch()` - Gemini-based semantic matching
+- `extractContextTags()` - Extracts context tags from new events
+- Tags include: location, keywords, trigger contexts
+
+**3. Cron Scheduler** (`src/scheduler/cronScheduler.ts`)
+- Polls database every minute for due reminders (backup for in-memory timers)
+- Sends weekly digest every Sunday at 9am IST
+- Survives server restarts
+
+#### Database Schema Updates
+
+Added new columns to `events` table:
+```sql
+ALTER TABLE events ADD COLUMN context_tags TEXT;        -- JSON: ["goa", "shopping"]
+ALTER TABLE events ADD COLUMN location TEXT;            -- Primary location
+ALTER TABLE events ADD COLUMN trigger_keywords TEXT;    -- Keywords that trigger reminder
+ALTER TABLE events ADD COLUMN proactive_triggered INTEGER DEFAULT 0;
+ALTER TABLE events ADD COLUMN proactive_trigger_count INTEGER DEFAULT 0;
+```
+
+New functions:
+- `getEventsForProactiveTrigger()` - Get pending events for matching
+- `markEventProactivelyTriggered()` - Mark event as triggered
+- `resetProactiveTrigger()` - Reset for snooze
+- `updateEventContextTags()` - Update context tags
+
+#### Pipeline Integration
+
+The proactive check runs BEFORE normal pipeline processing:
+
+```
+Incoming Message
+      │
+      ▼
+┌─────────────────────────────────────┐
+│ 1. PROACTIVE TRIGGER CHECK          │ ← NEW! Runs for ALL messages
+│    - Load pending events            │
+│    - Gemini matches context         │
+│    - Send reminders if matched      │
+└─────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────┐
+│ 2. NORMAL PIPELINE                  │
+│    - Heuristic → Classification     │
+│    - Extraction → Routing           │
+└─────────────────────────────────────┘
+```
+
+#### Configuration Options
+
+New environment variables:
+```env
+EVOLUTION_INSTANCE=default           # WhatsApp instance name
+ENABLE_PROACTIVE_TRIGGERS=true       # Enable/disable proactive system
+PROACTIVE_CHECK_INTERVAL=60000       # Check interval in ms
+```
+
+#### Dependencies Added
+- `cron` - For persistent reminder scheduling
+
+#### Files Modified/Created
+```
+src/services/proactiveTrigger.ts     # NEW: Main proactive service
+src/services/contextMatcher.ts       # NEW: Gemini context matching
+src/scheduler/cronScheduler.ts       # NEW: Cron-based scheduler
+src/database/sqlite.ts               # Added proactive columns/functions
+src/shared/types.ts                  # Added context_tags, location, trigger_keywords
+src/config/index.ts                  # Added Evolution and proactive config
+src/pipeline/index.ts                # Integrated proactive check
+src/pipeline/extractor.ts            # Added context fields
+src/pipeline/ruleEngine.ts           # Added context fields
+src/pipeline/eventRouter.ts          # Added proactive fields to StoredEvent
+tests/integration/pipeline.test.ts   # Fixed for new required fields
+```
+
+#### Note on WhatsApp
+WhatsApp via Evolution API is **READ-ONLY**. All reminders are sent via Web Push notifications only.
+
+---
+
+## [0.7.9] - 2026-02-03
+
+### Fixed - Reminder Classification & UI Event Actions
+
+Major improvements to event classification accuracy and UI functionality.
+
+#### 1. Reminder Classification Fixed
+
+**Problem**: Messages like "bring potato on your way home" were incorrectly classified as `irrelevant` because they lacked explicit time references.
+
+**Solution**: Added support for implicit time contexts and action+item reminder patterns.
+
+**Changes to Heuristic Gate** (`heuristicGate.ts`):
+- Added implicit time keywords: "on your way", "way back", "way home", "coming home", "reaching home"
+- Added strong patterns for action+location combos: `/(bring|get|buy).*way.*home/`
+- Added action+item detection that bypasses the time requirement
+- Common items recognized: milk, potato, groceries, medicine, etc.
+
+**Changes to Classifier** (`classifier.ts`):
+- Updated prompt to recognize reminders with implicit timing
+- Added examples: "Bring potatoes on your way home" → new_event
+- Updated fallback classification with action+item pattern detection
+- Implicit time patterns: "on your way", "way back", "when you come", etc.
+
+#### 2. UI Event Actions Fixed
+
+**Problem**: 
+- `/api/logs/all` endpoint was being caught by `/api/logs/:step` (route ordering)
+- Soft events had no action buttons
+- Active events had no "Complete" button
+
+**Solution**:
+- Reordered routes: `/api/logs/all` and `/api/logs/file/:filename` now come BEFORE `/api/logs/:step`
+- Added Accept/Decline buttons for `soft` status events
+- Added Complete button for `active` status events
+
+#### Test Results After Fix
+
+| Message | Before | After |
+|---------|--------|-------|
+| "bring potato on your way home" | irrelevant | **new_event** ✓ |
+| "get milk from store" | irrelevant | **new_event** ✓ |
+| "Meeting tomorrow at 3pm" | new_event | **new_event** ✓ |
+| "Postpone to 5pm instead" | update_event | **update_event** ✓ |
+| "Done" | dropped | **dropped** ✓ (correct) |
+| "Ok kale payment thai jase" | dropped | **dropped** ✓ (correct) |
+
+#### Files Modified
+```
+src/pipeline/heuristicGate.ts  # Added implicit time patterns, action+item detection
+src/pipeline/classifier.ts     # Updated prompt and fallback for reminders
+src/server.ts                  # Fixed route ordering for /api/logs/*
+webapp/public/js/app.js        # Added action buttons for soft/active events
+```
+
+---
+
 ## [0.7.8] - 2026-02-03
 
 ### Added - Comprehensive Logging System & E2E Testing

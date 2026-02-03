@@ -451,6 +451,20 @@ const STRICT_NEGATIVE_PATTERNS = [
   /^[^\w\s]*$/,
   // Forwarded/media indicators
   /^\[?(forwarded|image|video|audio|document|sticker|gif)\]?$/i,
+  
+  // NEGATION PATTERNS - Messages that NEGATE an action are NOT events
+  // "don't bring X", "no need to get X", etc.
+  /\b(don'?t|dont|do\s*not|no\s+need\s+to|not\s+required|never|stop)\s+(bring|get|buy|take|pick|need|want|remind|call|meet|go|do|make|send|pay)/i,
+  /\b(don'?t|dont|not?)\s+\w{0,15}\s*(potato|potatoes?|milk|grocery|groceries|vegetables?|bread|eggs?|medicine|meds)/i,
+  // "skip the meeting/call/appointment" - cancellation intent
+  /\bskip\s+(the\s+)?(meeting|call|appointment|event|class|lecture|session|interview|standup|sync)/i,
+  // "cancel the meeting/call" patterns
+  /\b(cancel|abort|call\s*off)\s+(the\s+)?(meeting|call|appointment|event|class)/i,
+  // Hindi/Hinglish negation patterns
+  /\b(mat|nahi|nai|na)\s+(lana|lao|laana|karo|kar|lo|le|jana|jao|dena|do|bhejo|bolo)/i,
+  /\b(lana|laana|lena|karna|jana|dena)\s+(mat|nahi|nai)/i,
+  // "now don't", "ab mat", "ab nahi" patterns  
+  /\b(now|ab|abhi)\s+(don'?t|dont|mat|nahi|nai)\b/i,
 ];
 
 // Short casual phrases that should be rejected

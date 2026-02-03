@@ -7,13 +7,14 @@ This document explains the complete flow of how Argus processes WhatsApp message
 ## Table of Contents
 1. [Overview](#overview)
 2. [Message Flow](#message-flow)
-3. [Pipeline Stages](#pipeline-stages)
-4. [Event Type Detection](#event-type-detection)
-5. [Update Detection (Implicit Updates)](#update-detection-implicit-updates)
-6. [Time Extraction & IST Handling](#time-extraction--ist-handling)
-7. [Context Building](#context-building)
-8. [Deduplication with FAISS](#deduplication-with-faiss)
-9. [Examples](#examples)
+3. [Proactive Triggers (v0.8.0)](#proactive-triggers-v080)
+4. [Pipeline Stages](#pipeline-stages)
+5. [Event Type Detection](#event-type-detection)
+6. [Update Detection (Implicit Updates)](#update-detection-implicit-updates)
+7. [Time Extraction & IST Handling](#time-extraction--ist-handling)
+8. [Context Building](#context-building)
+9. [Deduplication with FAISS](#deduplication-with-faiss)
+10. [Examples](#examples)
 
 ---
 
@@ -21,18 +22,19 @@ This document explains the complete flow of how Argus processes WhatsApp message
 
 Argus is an AI-powered event extraction system that:
 1. Receives WhatsApp messages via Evolution API webhook
-2. Processes them through a multi-stage pipeline
-3. Extracts structured events using rule-based + LLM extraction
-4. Stores events in SQLite with vector embeddings in FAISS
-5. Schedules reminders and sends push notifications
+2. **Checks for proactive triggers** against ALL pending events (v0.8.0)
+3. Processes them through a multi-stage pipeline
+4. Extracts structured events using rule-based + LLM extraction
+5. Stores events in SQLite with vector embeddings in FAISS
+6. Schedules reminders and sends push notifications
 
 ### Tech Stack
 - **Runtime**: Node.js with TypeScript
-- **LLM**: Gemini 3 Flash Preview (via OpenAI-compatible API)
+- **LLM**: Gemini 2.0 Flash (via OpenAI-compatible API)
 - **Vector Store**: FAISS for semantic similarity search
 - **Embeddings**: Gemini text-embedding-004
 - **Database**: SQLite with better-sqlite3
-- **Notifications**: Web Push API
+- **Notifications**: Web Push API + WhatsApp (Evolution API)
 
 ---
 
@@ -40,6 +42,11 @@ Argus is an AI-powered event extraction system that:
 
 ```
 WhatsApp → Evolution API → Webhook → Argus Pipeline → Event Storage
+                                          ↓
+                          ┌──────────────────────────────────┐
+                          │ Stage 0: Proactive Trigger Check │
+                          │ (Check against ALL pending tasks)│
+                          └──────────────────────────────────┘
                                           ↓
                               Rule Engine (fast) ─→ If high confidence → Store
                                           ↓
@@ -66,6 +73,127 @@ WhatsApp → Evolution API → Webhook → Argus Pipeline → Event Storage
    - Routes based on event_type: new_event, update_event, signal_event
    - Deduplicates using FAISS similarity search
    - Stores event and schedules reminders
+
+---
+
+## Proactive Triggers (v0.8.0)
+
+### The Problem
+
+Traditional reminder apps only store tasks - they don't remind you when the context is right.
+
+**Example Scenario:**
+- You save: "Get cashew from Goa"
+- 3 months later, you message a friend: "Just reached Goa!"
+- Traditional apps: Nothing happens (the reminder just sits there)
+- **Argus with Proactive Triggers**: Immediately sends you a reminder about the cashews!
+
+### The Solution
+
+Argus checks **EVERY incoming message** against **ALL pending events** using Gemini's intelligent context matching. This happens BEFORE the normal event extraction pipeline.
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PROACTIVE TRIGGER FLOW                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. Message Received ──► "Just reached Goa!"                    │
+│          │                                                       │
+│          ▼                                                       │
+│  2. Load Pending Events ──► [cashews, medicine, call mom...]    │
+│          │                                                       │
+│          ▼                                                       │
+│  3. Gemini Context Match ──► Analyzes message vs all events     │
+│          │                                                       │
+│          ▼                                                       │
+│  4. Match Found? ──► YES: "Get cashew from Goa" matches!        │
+│          │                                                       │
+│          ▼                                                       │
+│  5. Send Reminder ──► Web Push notification                     │
+│          │                                                       │
+│          ▼                                                       │
+│  6. Continue Pipeline ──► Normal event extraction continues      │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Step-by-Step Flow
+
+1. **Message Arrives** (`src/pipeline/index.ts`)
+   - Any WhatsApp message triggers proactive check FIRST
+   - Runs before heuristic gate
+
+2. **Load Pending Events** (`src/services/proactiveTrigger.ts`)
+   - Query all events where `status != 'completed'`
+   - Include context tags, location, trigger keywords
+
+3. **Gemini Context Match** (`src/services/contextMatcher.ts`)
+   - Send current message + all pending events to Gemini
+   - Gemini analyzes semantic relationships
+   - Returns matches with confidence scores
+
+4. **Match Detection**
+   - If confidence > 0.7, consider it a match
+   - Check if event was already triggered recently (debounce)
+
+5. **Send Reminder** (`src/notifications/index.ts`)
+   - Send Web Push notification
+   - Mark event as `proactive_triggered = true`
+   - Increment `proactive_trigger_count`
+   - Note: WhatsApp is READ-ONLY, no messages sent back
+
+6. **Continue Normal Pipeline**
+   - Message proceeds to heuristic gate
+   - Normal event extraction happens as usual
+
+### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `src/services/proactiveTrigger.ts` | Main service, `checkForProactiveTriggers()` |
+| `src/services/contextMatcher.ts` | Gemini-based matching, `extractContextTags()` |
+| `src/notifications/index.ts` | Web Push notifications for reminders |
+| `src/scheduler/cronScheduler.ts` | Persistent cron-based reminder scheduling |
+
+### Database Schema (New Columns in `events` table)
+
+```sql
+-- Context tags for semantic matching
+context_tags TEXT,  -- JSON array: ["goa", "travel", "shopping"]
+
+-- Primary location extracted from event
+location TEXT,      -- "Goa", "Mumbai", etc.
+
+-- Keywords that trigger this reminder
+trigger_keywords TEXT,  -- JSON array: ["goa", "reached", "arrived"]
+
+-- Was this event ever proactively triggered?
+proactive_triggered INTEGER DEFAULT 0,
+
+-- How many times was it triggered?
+proactive_trigger_count INTEGER DEFAULT 0
+```
+
+### Example Matches
+
+| Pending Event | Incoming Message | Match? | Why |
+|---------------|------------------|--------|-----|
+| "Get cashew from Goa" | "Just reached Goa!" | YES | Location match |
+| "Call mom on her birthday" | "Mom's birthday tomorrow" | YES | Person + time |
+| "Buy groceries" | "I'm at the supermarket" | YES | Context match |
+| "Meeting at 3pm" | "What's for lunch?" | NO | No semantic relation |
+
+### Configuration
+
+```bash
+# Enable/disable proactive triggers
+ENABLE_PROACTIVE_TRIGGERS=true
+
+# How often to check (milliseconds, default 60000 = 1 min)
+PROACTIVE_CHECK_INTERVAL=60000
+```
 
 ---
 
@@ -480,9 +608,9 @@ Output:
 
 ### Environment Variables
 ```bash
-# LLM Configuration
+# LLM Configuration (Gemini - Primary)
 GEMINI_API_KEY=your_key_here
-GEMINI_MODEL=gemini-3-flash-preview
+GEMINI_MODEL=gemini-2.0-flash
 GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/openai
 
 # Database
@@ -490,6 +618,10 @@ DATABASE_PATH=data/db/events.db
 
 # Server
 PORT=3000
+
+# Proactive Triggers (v0.8.0)
+ENABLE_PROACTIVE_TRIGGERS=true
+PROACTIVE_CHECK_INTERVAL=60000
 ```
 
 ### Key Constants
@@ -504,13 +636,16 @@ DUPLICATE_SIMILARITY_THRESHOLD = 0.85;  // FAISS dedup threshold
 
 | File | Purpose |
 |------|---------|
-| `src/webhook/evolution.ts` | WhatsApp webhook handler |
+| `src/webhook/evolution.ts` | WhatsApp webhook handler (READ-ONLY) |
 | `src/pipeline/index.ts` | Main pipeline orchestration |
 | `src/pipeline/contextBuilder.ts` | Build context from recent messages |
 | `src/pipeline/ruleEngine.ts` | Fast regex-based extraction |
 | `src/pipeline/extractor.ts` | LLM-based extraction |
 | `src/pipeline/classifier.ts` | Event type classification |
 | `src/pipeline/eventRouter.ts` | Route & store events |
+| `src/services/proactiveTrigger.ts` | Proactive trigger service (v0.8.0) |
+| `src/services/contextMatcher.ts` | Gemini context matching (v0.8.0) |
+| `src/scheduler/cronScheduler.ts` | Cron-based persistent reminders (v0.8.0) |
 | `src/database/sqlite.ts` | SQLite database operations |
 | `src/vector/faiss.ts` | FAISS vector store |
 | `src/scheduler/index.ts` | Reminder scheduling |
@@ -606,4 +741,4 @@ CREATE TABLE llm_calls (
 
 ---
 
-*Last updated: v0.7.8 - Feb 3, 2026*
+*Last updated: v0.8.1 - Feb 3, 2026*

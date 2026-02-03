@@ -53,6 +53,12 @@ import {
   deactivatePattern,
 } from './pipeline/patternLearner.js';
 import { getLearnedPatternCounts } from './pipeline/ruleEngine.js';
+import { 
+  registerSubscription, 
+  unregisterSubscription, 
+  sendNotification,
+  getSubscriptionCount,
+} from './notifications/index.js';
 
 // Notification history storage (in-memory for now)
 let notificationHistory: Array<{ id: string; message: string; timestamp: string }> = [];
@@ -440,6 +446,106 @@ export function createServer(): Express {
   
   app.get('/api/notifications', apiAuth, (_req: Request, res: Response) => {
     res.json({ notifications: getNotificationHistory() });
+  });
+
+  // Get VAPID public key for push subscription
+  app.get('/api/push/vapid-key', (_req: Request, res: Response) => {
+    res.json({ 
+      publicKey: config.vapidPublicKey || '',
+      configured: !!(config.vapidPublicKey && config.vapidPrivateKey),
+    });
+  });
+
+  // Register push subscription
+  app.post('/api/push/subscribe', async (req: Request, res: Response) => {
+    try {
+      const subscription = req.body;
+      
+      if (!subscription || !subscription.endpoint || !subscription.keys) {
+        res.status(400).json({ error: 'Invalid subscription data' });
+        return;
+      }
+
+      const success = await registerSubscription({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.keys.p256dh,
+          auth: subscription.keys.auth,
+        },
+      });
+
+      if (success) {
+        logger.info('Push subscription registered', { 
+          endpoint: subscription.endpoint.slice(0, 50) + '...',
+        });
+        res.json({ 
+          success: true, 
+          message: 'Subscribed successfully',
+          count: getSubscriptionCount(),
+        });
+      } else {
+        res.status(500).json({ error: 'Failed to register subscription' });
+      }
+    } catch (error) {
+      logger.error('Push subscription failed', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Unregister push subscription
+  app.post('/api/push/unsubscribe', async (req: Request, res: Response) => {
+    try {
+      const { endpoint } = req.body;
+      
+      if (!endpoint) {
+        res.status(400).json({ error: 'Endpoint required' });
+        return;
+      }
+
+      const success = await unregisterSubscription(endpoint);
+      
+      logger.info('Push subscription removed', { 
+        endpoint: endpoint.slice(0, 50) + '...',
+        success,
+      });
+      
+      res.json({ success: true, message: 'Unsubscribed' });
+    } catch (error) {
+      logger.error('Push unsubscription failed', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Send test push notification
+  app.post('/api/push/test', async (req: Request, res: Response) => {
+    try {
+      const { title, body } = req.body;
+      
+      const success = await sendNotification({
+        type: 'system',
+        title: title || 'Test Notification',
+        body: body || 'This is a test push notification from Argus',
+        icon: '/icon-192.svg',
+        data: { test: true },
+      });
+
+      res.json({ 
+        success, 
+        message: success ? 'Test notification sent' : 'No subscriptions found',
+        subscriptionCount: getSubscriptionCount(),
+      });
+    } catch (error) {
+      logger.error('Test notification failed', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get push subscription status
+  app.get('/api/push/status', (_req: Request, res: Response) => {
+    res.json({
+      configured: !!(config.vapidPublicKey && config.vapidPrivateKey),
+      subscriptionCount: getSubscriptionCount(),
+    });
   });
 
   // =============================================

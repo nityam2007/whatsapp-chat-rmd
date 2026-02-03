@@ -14,7 +14,7 @@
     <nav class="sidebar">
       <div class="logo">
         <h1>Argus</h1>
-        <span>Dashboard v0.7.8</span>
+        <span>Dashboard v0.8.1</span>
       </div>
       
       <div class="nav-section">Overview</div>
@@ -54,6 +54,10 @@
       <a class="nav-item" data-page="pipeline-logs">
         <svg class="icon-svg" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         <span>Pipeline Logs</span>
+      </a>
+      <a class="nav-item" data-page="pipeline-live">
+        <svg class="icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Pipeline Live</span>
       </a>
       <a class="nav-item" data-page="metrics">
         <svg class="icon-svg" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -401,6 +405,124 @@
         <div class="pagination" id="pipeline-logs-pagination"></div>
       </section>
       
+      <!-- Pipeline Live Page -->
+      <section id="page-pipeline-live" class="page">
+        <div class="header">
+          <h2>Pipeline Live View</h2>
+          <div class="header-actions">
+            <span class="text-muted" style="font-size:12px;">Auto-refresh: <span id="live-refresh-status">OFF</span></span>
+            <button class="btn btn-outline" id="btn-toggle-live" onclick="toggleLiveView()">Start Live</button>
+            <button class="btn btn-outline" onclick="loadRecentPipeline()">Refresh</button>
+          </div>
+        </div>
+        
+        <!-- Pipeline Flow Diagram -->
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header"><h3>Pipeline Flow (13 Stages)</h3></div>
+          <div class="card-body">
+            <div class="pipeline-flow" id="pipeline-flow">
+              <div class="pipeline-stage" data-stage="received" title="Message Received">
+                <div class="stage-icon">📥</div>
+                <div class="stage-name">Receive</div>
+                <div class="stage-count" id="stage-received-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="store" title="Store in Database">
+                <div class="stage-icon">💾</div>
+                <div class="stage-name">Store</div>
+                <div class="stage-count" id="stage-store-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="proactive" title="Proactive Trigger Check">
+                <div class="stage-icon">⚡</div>
+                <div class="stage-name">Proactive</div>
+                <div class="stage-count" id="stage-proactive-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="heuristic" title="Heuristic Gate">
+                <div class="stage-icon">🚦</div>
+                <div class="stage-name">Heuristic</div>
+                <div class="stage-count" id="stage-heuristic-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="classify" title="Classification">
+                <div class="stage-icon">🏷️</div>
+                <div class="stage-name">Classify</div>
+                <div class="stage-count" id="stage-classify-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="intent" title="Intent Detection">
+                <div class="stage-icon">🎯</div>
+                <div class="stage-name">Intent</div>
+                <div class="stage-count" id="stage-intent-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="context" title="Context Gathering">
+                <div class="stage-icon">📚</div>
+                <div class="stage-name">Context</div>
+                <div class="stage-count" id="stage-context-count">0</div>
+              </div>
+            </div>
+            <div class="pipeline-flow" id="pipeline-flow-2" style="margin-top:12px;">
+              <div class="pipeline-stage" data-stage="compress" title="Token Compression">
+                <div class="stage-icon">🗜️</div>
+                <div class="stage-name">Compress</div>
+                <div class="stage-count" id="stage-compress-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="rules" title="Rule Engine">
+                <div class="stage-icon">📋</div>
+                <div class="stage-name">Rules</div>
+                <div class="stage-count" id="stage-rules-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="llm" title="LLM Extraction">
+                <div class="stage-icon">🤖</div>
+                <div class="stage-name">LLM</div>
+                <div class="stage-count" id="stage-llm-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="context_tag" title="Context Tagging">
+                <div class="stage-icon">🔖</div>
+                <div class="stage-name">Tag</div>
+                <div class="stage-count" id="stage-context_tag-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="route" title="Event Routing">
+                <div class="stage-icon">🔀</div>
+                <div class="stage-name">Route</div>
+                <div class="stage-count" id="stage-route-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage" data-stage="learn" title="Pattern Learning">
+                <div class="stage-icon">📖</div>
+                <div class="stage-name">Learn</div>
+                <div class="stage-count" id="stage-learn-count">0</div>
+              </div>
+              <div class="pipeline-arrow">→</div>
+              <div class="pipeline-stage complete" data-stage="complete" title="Complete">
+                <div class="stage-icon">✅</div>
+                <div class="stage-name">Done</div>
+                <div class="stage-count" id="stage-complete-count">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Recent Pipeline Activity -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Recent Pipeline Activity</h3>
+            <span class="text-muted" style="font-size:12px;">Last 20 messages</span>
+          </div>
+          <div class="card-body" style="max-height:500px;overflow:auto;">
+            <div id="pipeline-activity-list">
+              <div class="empty-state"><p>No recent activity</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
       <!-- Metrics Page -->
       <section id="page-metrics" class="page">
         <div class="header">
@@ -502,7 +624,21 @@
               <tr><td>Permission</td><td id="info-permission">-</td></tr>
               <tr><td>Service Worker</td><td id="info-sw">-</td></tr>
               <tr><td>Subscription</td><td id="info-subscription">-</td></tr>
+              <tr><td>RMD Server Sync</td><td id="info-rmd-sync">-</td></tr>
             </table>
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
+            <h3>Sync with Main Server</h3>
+          </div>
+          <div class="card-body" style="padding:16px;">
+            <p style="margin-bottom:12px;color:var(--text-muted);">
+              Sync push subscriptions with the main RMD server so proactive triggers can send notifications.
+            </p>
+            <button class="btn btn-primary" onclick="syncSubscriptionsToServer()">Sync Now</button>
+            <span id="sync-result" style="margin-left:12px;"></span>
           </div>
         </div>
       </section>

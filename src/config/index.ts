@@ -39,6 +39,11 @@ export interface Config {
   // Evolution API
   evolutionApiUrl: string;
   evolutionApiKey: string;
+  evolutionInstance: string;  // WhatsApp instance name
+
+  // Proactive Trigger Settings
+  enableProactiveTriggers: boolean;
+  proactiveCheckInterval: number;  // Interval in ms for cron checks
 
   // Token Compression
   tokenThreshold: number;
@@ -118,6 +123,11 @@ export const config: Config = {
   // Evolution API
   evolutionApiUrl: getEnvVar('EVOLUTION_API_URL', 'http://localhost:8080'),
   evolutionApiKey: getEnvVar('EVOLUTION_API_KEY', ''),
+  evolutionInstance: getEnvVar('EVOLUTION_INSTANCE', 'default'),
+
+  // Proactive Trigger Settings
+  enableProactiveTriggers: getEnvVar('ENABLE_PROACTIVE_TRIGGERS', 'true') === 'true',
+  proactiveCheckInterval: getEnvVarInt('PROACTIVE_CHECK_INTERVAL', 60000),  // Default 1 minute
 
   // Token Compression
   tokenThreshold: getEnvVarInt('TOKEN_THRESHOLD', 2000),

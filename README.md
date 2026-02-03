@@ -4,7 +4,32 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.7.8 | **LLM**: Gemini 3 Flash Preview
+**Current Version**: v0.8.1 | **LLM**: Gemini 2.0 Flash
+
+## What's New in v0.8.1: Push Notification Sync & Keyword Matching
+
+- **Push Notification Sync**: Webapp subscriptions now sync to the main RMD server for reliable push delivery
+- **Keyword Matching Fallback**: Proactive triggers now use keyword matching when FAISS embeddings aren't available
+- **Pipeline Live View**: Real-time visualization of all 13 pipeline stages in the dashboard
+- **RMD Status Display**: See push subscription count from the main server in the notifications page
+
+## Proactive Triggers (v0.8.0)
+
+Argus is now **proactive**, not just reactive. When you send ANY message, Argus intelligently checks if it relates to any pending tasks and reminds you automatically.
+
+**Example:**
+```
+Task saved: "Get cashew from Goa for Priya"
+... 3 months later ...
+You send: "Just reached Goa!"
+Argus sends Push notification: "You have a pending task: Get cashew from Goa for Priya"
+```
+
+This uses Gemini's 1M token context window for intelligent semantic matching - not just keywords.
+
+> **Note:** WhatsApp is READ-ONLY. All reminders are sent via Web Push notifications.
+
+---
 
 ## Quick Start (One Command)
 
@@ -148,6 +173,55 @@ The AI detects that message 2 is updating message 1 because:
 - **All user times are interpreted as IST** (India Standard Time, UTC+5:30)
 - Stored as UTC in database, displayed as IST in webapp
 - Example: "10 AM" → stored as `04:30:00.000Z` (UTC) → shown as "10:00 AM IST"
+
+---
+
+## Proactive Triggers (v0.8.0)
+
+Unlike traditional reminder apps that only store tasks, Argus is **proactive** - it reminds you when the context is right.
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     INCOMING WHATSAPP MESSAGE                           │
+│                "Just reached Goa, weather is amazing!"                  │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│              1. PROACTIVE TRIGGER CHECK (runs for ALL messages)         │
+│  - Load all pending events from database                                │
+│  - Send to Gemini with intelligent prompt                               │
+│  - Gemini: "User in Goa, pending task 'Get cashew from Goa'"           │
+│  - Returns: { matched: true, confidence: 0.9 }                          │
+└─────────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│              2. SEND PROACTIVE REMINDER                                 │
+│  - WhatsApp: "You have a pending task: Get cashew from Goa"            │
+│  - Web Push: Same notification                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Examples
+
+| Your Message | Triggers This Task |
+|--------------|-------------------|
+| "Just reached Goa" | "Get cashew from Goa for Priya" |
+| "Meeting with John went well" | "Ask John about the project" |
+| "Feeling better now" | "Schedule doctor follow-up when better" |
+| "The client approved!" | "Send invoice after approval" |
+| "Finally got some free time" | Any pending leisure tasks |
+
+### Configure Proactive Triggers
+
+```env
+# .env
+ENABLE_PROACTIVE_TRIGGERS=true
+PROACTIVE_CHECK_INTERVAL=60000  # Check every minute
+```
 
 ---
 

@@ -1,53 +1,57 @@
 flowchart LR
-    subgraph Phone["Phone"]
+    subgraph Phone
         WA[WhatsApp]
     end
 
-    subgraph Cloud["WhatsApp Cloud"]
+    subgraph Cloud[WhatsApp Cloud]
         WAS[WhatsApp Servers]
     end
 
-    subgraph Server["Your Server"]
-        EVO[Evolution API<br/>:8080]
+    subgraph Server[Your Server]
+        EVO[Evolution API]
         
-        subgraph ARGUS["Argus Service :3000"]
+        subgraph ARGUS[Argus Service]
             WH[Webhook]
+            PT[Proactive Trigger]
             HG[Heuristic Gate]
-            CL[Classifier<br/>gpt-4o-mini]
+            CL[Classifier]
             CB[Context Builder]
-            RE[Rule Engine<br/>Static + Learned]
-            EX[Extractor<br/>Gemini 3 Flash]
+            RE[Rule Engine]
+            EX[Extractor]
             ER[Event Router]
         end
         
-        subgraph Storage["Storage"]
+        subgraph Storage
             SQL[(SQLite)]
             VEC[(Vectors)]
         end
         
-        subgraph Learning["Auto-Learning"]
+        subgraph Learning[Auto-Learning]
             PL[Pattern Learner]
             LP[(Learned Patterns)]
         end
         
         SCH[Scheduler]
-        PUSH[Push Service<br/>:3002]
+        PUSH[Push Service]
     end
 
-    subgraph Browser["Browser"]
+    subgraph Browser
         SW[Service Worker]
         NOT[Notification]
     end
 
-    subgraph AI["AI Services"]
-        CLASSIFIER[OpenAI API<br/>Classifier]
-        GEMINI[Gemini API<br/>Extractor]
+    subgraph AI[AI Services]
+        CLASSIFIER[OpenAI API]
+        GEMINI[Gemini API]
     end
 
-    WA <-->|Messages| WAS
-    WAS <-->|Baileys Protocol| EVO
-    EVO -->|POST /webhook| WH
-    WH --> HG
+    WA -->|Messages| WAS
+    WAS -->|Baileys| EVO
+    EVO -->|Webhook| WH
+    WH --> PT
+    PT -->|Check Pending| SQL
+    PT -->|Match Found| PUSH
+    PT --> HG
     HG -->|Pass| CL
     CL -->|Classify| CLASSIFIER
     CLASSIFIER -->|Event Type| CL
@@ -71,6 +75,7 @@ flowchart LR
     LP -.->|Load| RE
 
     style WA fill:#25D366,color:#fff
+    style PT fill:#8b5cf6,color:#fff
     style CLASSIFIER fill:#10a37f,color:#fff
     style GEMINI fill:#4285f4,color:#fff
     style NOT fill:#f59e0b,color:#fff

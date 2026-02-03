@@ -6,7 +6,7 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.7.8 (Comprehensive Logging + E2E Testing)
+**Current Version**: v0.8.1 (Push Sync + Keyword Matching)
 
 ---
 
@@ -17,11 +17,12 @@
 - Auto-Learning System that improves over time
 - Real-time metrics and monitoring
 - Push notifications for reminders
-- Gemini 3 Flash Preview for intelligent extraction
+- Gemini 2.0 Flash for intelligent extraction
 - Professional webapp dashboard with metrics
 - Docker-based deployment with health checks
 - **Comprehensive LLM logging** (input/output to DB and files)
 - **E2E test suite** for pipeline validation
+- **Proactive Triggers** (v0.8.0) - Intelligent context-based reminders via Push notifications
 
 ---
 
@@ -153,7 +154,7 @@
                                +------------------------+
 ```
 
-### Pipeline Flow (v0.5.0)
+### Pipeline Flow (v0.8.0)
 
 ```
 WhatsApp Message
@@ -161,6 +162,12 @@ WhatsApp Message
 Evolution API Webhook
     |
 Store Raw Message (SQLite)
+    |
++---[PROACTIVE TRIGGER CHECK]---+  ← NEW! Runs for ALL messages
+|   Load pending events          |
+|   Gemini matches context       |
+|   Send reminder if matched     |
++--------------------------------+
     |
 Heuristic Gate (Signal Detection)
     | (if signal found)
@@ -172,9 +179,11 @@ Rule Engine (Static + Learned Patterns)
     |
     +--[High Confidence]--> Event Router
     |
-    +--[Low Confidence]--> Big LLM Extraction (gpt-4o)
+    +--[Low Confidence]--> Big LLM Extraction (Gemini)
                                |
                            Log to llm_extraction_logs
+                               |
+                           Context Extraction (tags, location, keywords)
                                |
                            Event Router
     |
@@ -182,7 +191,7 @@ Rule Engine (Static + Learned Patterns)
 [Update Event] --> Vector Search --> Update DB
 [Signal Event] --> Dependency Search --> Activate Pending
     |
-Notify Orchestrator --> Push Notification
+Notify Orchestrator --> Push Notification + WhatsApp Reply
 ```
 
 ### Auto-Learning Loop
@@ -362,6 +371,18 @@ WHATSAPP-CHAT-RMD/
 |-------|---------|-------------|
 | `llm_calls` | All LLM API calls | id, call_type, model, prompt, response, tokens, duration_ms |
 
+### Proactive Trigger Columns (v0.8.0)
+
+Added to `events` table:
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `context_tags` | TEXT (JSON) | Semantic tags like ["goa", "shopping"] |
+| `location` | TEXT | Primary location (e.g., "Goa", "office") |
+| `trigger_keywords` | TEXT (JSON) | Keywords that trigger reminder |
+| `proactive_triggered` | INTEGER | Whether this event was proactively triggered |
+| `proactive_trigger_count` | INTEGER | Number of times triggered |
+
 ---
 
 ## Event Types
@@ -400,12 +421,20 @@ WHATSAPP-CHAT-RMD/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_API_KEY` | - | Google Gemini API key (primary) |
-| `GEMINI_MODEL` | `gemini-3-flash-preview` | Gemini model for extraction |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model for extraction |
 | `GEMINI_API_URL` | `https://generativelanguage.googleapis.com/v1beta/openai` | Gemini API endpoint |
 | `OPENAI_API_KEY` | - | OpenAI API key (fallback) |
 | `OPENAI_MODEL_SMALL` | `gpt-4o-mini` | Fast classifier model |
 | `OPENAI_MODEL_BIG` | `gpt-4o` | Detailed extractor model |
 | `TOKEN_THRESHOLD` | `2000` | Compression trigger threshold |
+
+### Optional - Proactive Triggers (v0.8.0)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_PROACTIVE_TRIGGERS` | `true` | Enable intelligent proactive reminders |
+| `PROACTIVE_CHECK_INTERVAL` | `60000` | Interval for checking triggers (ms) |
+| `EVOLUTION_INSTANCE_NAME` | `default` | WhatsApp instance for sending replies |
 
 ### Optional - Auto-Learning
 
@@ -564,7 +593,10 @@ npm test -- --watch
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v0.7.8 | Current | Comprehensive LLM Logging, E2E Test Suite, max_tokens Fix |
+| v0.8.1 | Current | **Push Sync + Keyword Matching** - Push subscriptions sync to RMD, keyword fallback for proactive triggers, Pipeline Live View |
+| v0.8.0 | - | **Proactive Trigger System** - Intelligent context-based reminders via Push, Cron scheduler |
+| v0.7.9 | - | Reminder Classification Fix, UI Event Actions |
+| v0.7.8 | - | Comprehensive LLM Logging, E2E Test Suite, max_tokens Fix |
 | v0.7.7 | - | Chat Isolation, Message Direction Tracking |
 | v0.7.6 | - | Time-Only Messages Fix |
 | v0.7.5 | - | Implicit Update Detection, Technical Documentation |

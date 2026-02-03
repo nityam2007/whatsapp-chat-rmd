@@ -32,6 +32,8 @@ import {
   storePipelineLog,
   eventExistsForMessage,
   getEventBySourceMessage,
+  getRecentEventsByChat,
+  getDatabase,
 } from '../database/sqlite.js';
 import { checkHeuristicGate, checkHeuristicGateWithSemantics } from './heuristicGate.js';
 import { classifyMessage } from './classifier.js';
@@ -53,6 +55,8 @@ import {
   PipelineLogContext,
 } from '../utils/pipelineLogger.js';
 import { storeMessageEmbedding, learnPattern } from '../vector/semanticSearch.js';
+import { checkForProactiveTriggers } from '../services/proactiveTrigger.js';
+import { extractContextTags } from '../services/contextMatcher.js';
 
 // Configuration for semantic enhancement
 const USE_SEMANTIC_HEURISTIC = true; // Enable semantic boost for heuristic gate
@@ -131,6 +135,41 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
     logger.debug('Message stored', { messageId: message.id });
 
     // =====================================
+    // Step 2.5: PROACTIVE TRIGGER CHECK (runs for ALL messages!)
+    // This uses Gemini to detect if this message relates to any pending events
+    // Example: "Just reached Goa" → triggers "Get cashew from Goa"
+    // =====================================
+    try {
+      const proactiveMatches = await checkForProactiveTriggers(message);
+      
+      if (proactiveMatches.length > 0) {
+        storePipelineLog({
+          message_id: message.id,
+          stage: 'proactive_trigger',
+          status: 'triggered',
+          data: { 
+            matchCount: proactiveMatches.length,
+            matches: proactiveMatches.map(m => ({
+              eventId: m.event.id,
+              eventTitle: m.event.title,
+              reason: m.matchReason,
+              confidence: m.confidence,
+            })),
+          },
+          duration_ms: timer.elapsed(),
+        });
+        
+        logger.info('Proactive triggers sent', {
+          messageId: message.id,
+          matchCount: proactiveMatches.length,
+        });
+      }
+    } catch (proactiveError) {
+      // Don't fail the pipeline for proactive trigger errors
+      logger.warn('Proactive trigger check failed', { error: proactiveError, messageId: message.id });
+    }
+
+    // =====================================
     // Step 3: Heuristic Gate (with optional semantic boost)
     // =====================================
     timer.mark('heuristic_start');
@@ -181,6 +220,34 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
     logHeuristic(logCtx, heuristicResult);
     
     if (!heuristicResult.hasSignal) {
+      // =====================================
+      // Check if this is a NEGATION that should cancel existing events
+      // Example: "dont bring potato" should cancel existing "bring potato" event
+      // =====================================
+      const negationCancelResult = await checkNegationCancellation(message, logCtx);
+      if (negationCancelResult) {
+        storePipelineLog({
+          message_id: message.id,
+          stage: 'negation_cancel',
+          status: 'cancelled_event',
+          data: { 
+            cancelledEventId: negationCancelResult.id,
+            cancelledEventTitle: negationCancelResult.title,
+            reason: 'negation_detected',
+          },
+          duration_ms: timer.elapsed(),
+        });
+        
+        logger.info('Negation cancelled existing event', {
+          messageId: message.id,
+          cancelledEventId: negationCancelResult.id,
+          cancelledEventTitle: negationCancelResult.title,
+        });
+        
+        updateMessagePipelineComplete(message.id);
+        return negationCancelResult;
+      }
+      
       logger.debug('No signal found, message saved but not processed further', { 
         messageId: message.id,
         score: heuristicResult.score,
@@ -489,6 +556,40 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
     });
 
     // =====================================
+    // Step 8.5: Extract Context Tags for Proactive Triggers
+    // This populates context_tags, location, trigger_keywords for future matching
+    // =====================================
+    try {
+      const contextData = await extractContextTags(message.content, extractedEvent.title || '');
+      
+      // Merge context data into extracted event
+      extractedEvent.context_tags = contextData.context_tags;
+      extractedEvent.location = contextData.location;
+      extractedEvent.trigger_keywords = contextData.trigger_keywords;
+      
+      storePipelineLog({
+        message_id: message.id,
+        stage: 'context_extraction',
+        status: 'success',
+        data: { 
+          context_tags: contextData.context_tags,
+          location: contextData.location,
+          trigger_keywords: contextData.trigger_keywords,
+        },
+        duration_ms: timer.elapsed(),
+      });
+      
+      logger.debug('Context tags extracted', {
+        messageId: message.id,
+        context_tags: contextData.context_tags,
+        location: contextData.location,
+      });
+    } catch (contextError) {
+      // Don't fail for context extraction errors
+      logger.warn('Context tag extraction failed', { error: contextError, messageId: message.id });
+    }
+
+    // =====================================
     // Step 9: Check for duplicate event (FAISS-based deduplication)
     // =====================================
     if (eventExistsForMessage(message.id)) {
@@ -668,6 +769,99 @@ export function getMetricsSummary() {
  */
 export function logMetricsSummary() {
   metrics.logSummary();
+}
+
+/**
+ * Check if a negation message should cancel an existing event
+ * Example: "dont bring potato" should cancel existing "bring potato" event
+ * 
+ * @returns The cancelled event if found and cancelled, null otherwise
+ */
+async function checkNegationCancellation(
+  message: StoredMessage,
+  _logCtx: PipelineLogContext
+): Promise<StoredEvent | null> {
+  const content = message.content.toLowerCase().trim();
+  
+  // Negation patterns that indicate cancellation intent
+  const negationPatterns = [
+    /\b(don'?t|dont|do\s*not|no\s+need\s*(?:to)?|not\s+required|never|stop|skip)\s+(\w+)/i,
+    /\b(mat|nahi|nai|na)\s+(\w+)/i,  // Hindi negation
+    /\b(cancel|abort|call\s*off)\s+(the\s+)?(\w+)/i,
+  ];
+  
+  // Check if message matches negation pattern
+  let matchedKeyword: string | null = null;
+  for (const pattern of negationPatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      // Extract the action word being negated
+      matchedKeyword = match[match.length - 1]; // Last capture group
+      break;
+    }
+  }
+  
+  if (!matchedKeyword) {
+    return null;
+  }
+  
+  logger.debug('Negation keyword detected', {
+    messageId: message.id,
+    matchedKeyword,
+    content: content.slice(0, 100),
+  });
+  
+  // Look for recent events in the same chat that might match
+  const recentEvents = getRecentEventsByChat(message.chat_id, 20);
+  
+  if (recentEvents.length === 0) {
+    return null;
+  }
+  
+  // Find an event whose title contains the negated keyword
+  const db = getDatabase();
+  for (const event of recentEvents) {
+    const eventTitle = (event.title || '').toLowerCase();
+    const eventSource = (event.source_message_content || '').toLowerCase();
+    
+    // Check if the event title or source contains the keyword being negated
+    if (eventTitle.includes(matchedKeyword) || eventSource.includes(matchedKeyword)) {
+      // Only cancel if the event is still active/pending
+      if (['pending', 'pending_confirmation', 'active', 'soft'].includes(event.status)) {
+        logger.info('Found matching event to cancel via negation', {
+          messageId: message.id,
+          eventId: event.id,
+          eventTitle: event.title,
+          matchedKeyword,
+        });
+        
+        // Cancel the event
+        await db.updateEvent(event.id, {
+          status: 'cancelled',
+          updated_at: new Date().toISOString(),
+        });
+        
+        // Send notification about cancellation
+        const { sendNotification } = await import('../notifications/index.js');
+        await sendNotification({
+          type: 'cancelled',
+          event_id: event.id,
+          title: 'Event Cancelled',
+          body: `"${event.title}" cancelled due to: "${message.content.slice(0, 50)}"`,
+          data: {
+            reason: 'negation',
+            sourceMessage: message.content,
+          },
+        });
+        
+        // Return the cancelled event
+        const cancelledEvent = await db.getEvent(event.id);
+        return cancelledEvent;
+      }
+    }
+  }
+  
+  return null;
 }
 
 export default { processMessage, getPipelineMetrics, getMetricsSummary, logMetricsSummary };

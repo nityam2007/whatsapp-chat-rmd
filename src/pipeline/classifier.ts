@@ -423,6 +423,22 @@ function fallbackClassification(content: string): ClassificationResult {
     return { event_type: 'new_event', confidence: 0.55 };
   }
   
+  // NEGATION CHECK - Must come BEFORE action+item detection
+  // Messages like "don't bring potato", "no need to get milk" are NOT events
+  const negationPatterns = [
+    /\b(don'?t|dont|do\s*not|no\s+need\s*(?:to)?|not\s+required|never|stop|skip)\s+(bring|get|buy|take|pick|need|want|remind|call|meet|go|do|make|send|pay)/i,
+    /\b(don'?t|dont|not?)\s+\w{0,15}\s*(potato|potatoes?|milk|grocery|groceries|vegetables?|bread|eggs?|medicine|meds)/i,
+    // Hindi/Hinglish negation
+    /\b(mat|nahi|nai|na)\s+(lana|lao|laana|karo|kar|lo|le|jana|jao|dena|do|bhejo|bolo)/i,
+    /\b(lana|laana|lena|karna|jana|dena)\s+(mat|nahi|nai)/i,
+    // "now don't", "ab mat" patterns
+    /\b(now|ab|abhi)\s+(don'?t|dont|mat|nahi|nai)\b/i,
+  ];
+  
+  if (negationPatterns.some(p => p.test(lower))) {
+    return { event_type: 'irrelevant', confidence: 0.9 };
+  }
+
   // ACTION + ITEM patterns (reminders without specific time)
   const actionWords = ['bring', 'get', 'buy', 'pick up', 'pickup', 'collect', 'fetch', 'take', 'grab'];
   const itemWords = [

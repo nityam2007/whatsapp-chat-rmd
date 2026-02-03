@@ -327,6 +327,8 @@ export function extractWithRules(content: string, sender?: string): RuleEngineRe
     participants,
     created_by: sender || null,
     confidence: Math.min(confidence, 0.95),
+    context_tags: [],  // Will be populated later by context extractor
+    trigger_keywords: [],  // Will be populated later by context extractor
   };
 
   logger.info('Rule engine result', {

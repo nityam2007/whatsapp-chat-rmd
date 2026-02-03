@@ -1,14 +1,21 @@
 flowchart TD
-    subgraph "Input"
+    subgraph Input
         MSG[Incoming WhatsApp Message]
     end
 
-    subgraph "Stage 1: Heuristic Gate"
-        H1{Contains keywords?<br/>tomorrow, meeting,<br/>remind, schedule...}
+    subgraph Stage0[Stage 0 - Proactive Trigger]
+        PT1[Load Pending Events]
+        PT2[Gemini Context Match]
+        PT3{Match Found?}
+        PT4[Send Reminder]
+    end
+
+    subgraph Stage1[Stage 1 - Heuristic Gate]
+        H1{Contains keywords?}
         H2[Calculate Signal Score]
     end
 
-    subgraph "Stage 2: Small LLM Classification"
+    subgraph Stage2[Stage 2 - Classification]
         C1[GPT-4o-mini]
         C2{Event Type?}
         C3[new_event]
@@ -18,32 +25,32 @@ flowchart TD
         C7[irrelevant]
     end
 
-    subgraph "Stage 3: Context Building"
-        CTX1[Fetch Recent Messages<br/>Same Chat]
-        CTX2[Search Similar Events<br/>Vector Store]
+    subgraph Stage3[Stage 3 - Context Building]
+        CTX1[Fetch Recent Messages]
+        CTX2[Search Similar Events]
         CTX3[Build Context Window]
     end
 
-    subgraph "Stage 4: Rule Engine"
+    subgraph Stage4[Stage 4 - Rule Engine]
         RE1{Check Static Rules}
         RE2{Check Learned Patterns}
         RE3[High Confidence Match]
         RE4[Low Confidence]
     end
 
-    subgraph "Stage 5: Token Compression"
-        TC1{Tokens > 2000?}
+    subgraph Stage5[Stage 5 - Token Compression]
+        TC1{Tokens over 2000?}
         TC2[Compress with Quicksave]
         TC3[Keep Original]
     end
 
-    subgraph "Stage 6: Big LLM Extraction"
-        E1[Gemini 3 Flash]
-        E2[Extract Structured Data:<br/>title, time, date,<br/>condition, participants]
+    subgraph Stage6[Stage 6 - LLM Extraction]
+        E1[Gemini Flash]
+        E2[Extract Structured Data]
         E3[Log Extraction to DB]
     end
 
-    subgraph "Stage 7: Event Routing"
+    subgraph Stage7[Stage 7 - Event Routing]
         R1{Event Type}
         R2[Store New Event]
         R3[Update Existing]
@@ -51,29 +58,43 @@ flowchart TD
         R5[Schedule Reminder]
     end
 
-    subgraph "Auto-Learning Loop"
-        AL1[Pattern Learner<br/>Hourly Job]
+    subgraph AutoLearn[Auto-Learning Loop]
+        AL1[Pattern Learner]
         AL2[Analyze Extraction Logs]
-        AL3{Precision >= 70%?}
+        AL3{Precision over 70?}
         AL4[Create Learned Pattern]
         AL5[Reload Rule Engine]
     end
 
-    subgraph "Output"
+    subgraph Output
         OUT1[(SQLite DB)]
         OUT2[(Vector Store)]
         OUT3[Scheduler]
         OUT4[Push Notification]
     end
 
-    MSG --> H1
-    H1 -->|No Signal| DROP[Drop Message]
+    DROP[Drop Message]
+
+    MSG --> PT1
+    PT1 --> PT2
+    PT2 --> PT3
+    PT3 -->|Yes| PT4
+    PT3 -->|No| H1
+    PT4 --> H1
+    H1 -->|No Signal| DROP
     H1 -->|Has Signal| H2
     H2 --> C1
     C1 --> C2
-    C2 --> C3 & C4 & C5 & C6 & C7
+    C2 --> C3
+    C2 --> C4
+    C2 --> C5
+    C2 --> C6
+    C2 --> C7
     C7 --> DROP
-    C3 & C4 & C5 & C6 --> CTX1
+    C3 --> CTX1
+    C4 --> CTX1
+    C5 --> CTX1
+    C6 --> CTX1
     CTX1 --> CTX2
     CTX2 --> CTX3
     CTX3 --> RE1
@@ -85,7 +106,8 @@ flowchart TD
     RE4 --> TC1
     TC1 -->|Yes| TC2
     TC1 -->|No| TC3
-    TC2 & TC3 --> E1
+    TC2 --> E1
+    TC3 --> E1
     E1 --> E2
     E2 --> E3
     E3 --> R1
@@ -93,7 +115,8 @@ flowchart TD
     R1 -->|update| R3
     R1 -->|cancel| R4
     R1 -->|reminder| R5
-    R2 & R3 --> OUT1
+    R2 --> OUT1
+    R3 --> OUT1
     R2 --> OUT2
     R5 --> OUT3
     OUT3 --> OUT4
@@ -107,6 +130,8 @@ flowchart TD
     AL5 -.->|Update| RE2
 
     style MSG fill:#25D366,color:#fff
+    style PT2 fill:#4285f4,color:#fff
+    style PT4 fill:#8b5cf6,color:#fff
     style C1 fill:#10a37f,color:#fff
     style E1 fill:#4285f4,color:#fff
     style OUT4 fill:#f59e0b,color:#fff

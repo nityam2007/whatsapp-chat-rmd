@@ -57,6 +57,7 @@ function showPage(page) {
     case 'reminders': loadReminders(); break;
     case 'llm-calls': loadLLMCalls(); break;
     case 'pipeline-logs': loadPipelineLogs(); break;
+    case 'pipeline-live': loadRecentPipeline(); break;
     case 'metrics': loadMetrics(); break;
     case 'learning': loadLearningStats(); break;
   }
@@ -596,6 +597,122 @@ async function loadLearningStats() {
 }
 
 // ============================================
+// Pipeline Live View
+// ============================================
+
+let liveViewInterval = null;
+let isLiveViewActive = false;
+
+async function loadRecentPipeline() {
+  try {
+    // Fetch recent pipeline logs
+    const data = await apiCall('/api/pipeline-logs?limit=50');
+    const logs = data.logs || [];
+    
+    // Group logs by message ID
+    const messageGroups = {};
+    const stageCounts = {};
+    
+    for (const log of logs) {
+      if (!messageGroups[log.message_id]) {
+        messageGroups[log.message_id] = {
+          id: log.message_id,
+          stages: [],
+          firstTime: log.created_at,
+          lastTime: log.created_at,
+        };
+      }
+      messageGroups[log.message_id].stages.push(log);
+      
+      // Count stages
+      const stage = log.stage || 'unknown';
+      stageCounts[stage] = (stageCounts[stage] || 0) + 1;
+    }
+    
+    // Update stage counts in the flow diagram
+    const stageNames = ['received', 'store', 'proactive', 'heuristic', 'classify', 'intent', 'context', 'compress', 'rules', 'llm', 'context_tag', 'route', 'learn', 'complete'];
+    for (const stage of stageNames) {
+      const countEl = document.getElementById(`stage-${stage}-count`);
+      if (countEl) {
+        countEl.textContent = stageCounts[stage] || 0;
+      }
+    }
+    
+    // Render activity list
+    const activityEl = document.getElementById('pipeline-activity-list');
+    const messages = Object.values(messageGroups).slice(0, 20);
+    
+    if (messages.length === 0) {
+      activityEl.innerHTML = '<div class="empty-state"><p>No recent pipeline activity</p></div>';
+      return;
+    }
+    
+    activityEl.innerHTML = messages.map(msg => {
+      const stages = msg.stages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const lastStage = stages[stages.length - 1];
+      const hasError = stages.some(s => s.status === 'error');
+      const isComplete = stages.some(s => s.stage === 'complete' || s.stage === 'routing');
+      
+      return `
+        <div class="pipeline-activity-item">
+          <div class="activity-time">${formatTime(msg.firstTime)}</div>
+          <div class="activity-content">
+            <div class="activity-message">${escapeHtml(msg.id.slice(0, 20))}...</div>
+            <div class="activity-stages">
+              ${stages.map(s => {
+                const statusClass = s.status === 'error' ? 'error' : 
+                                    s.status === 'success' ? 'success' : 'active';
+                return `<span class="activity-stage-badge ${statusClass}">${s.stage}</span>`;
+              }).join('')}
+            </div>
+            <div class="activity-result">
+              ${hasError ? '<span class="text-danger">Error occurred</span>' :
+                isComplete ? '<span class="text-success">Completed</span>' :
+                `<span class="text-warning">In progress: ${lastStage?.stage || 'unknown'}</span>`}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+  } catch (error) {
+    console.error('Pipeline live load failed:', error);
+  }
+}
+
+function toggleLiveView() {
+  if (isLiveViewActive) {
+    // Stop live view
+    if (liveViewInterval) {
+      clearInterval(liveViewInterval);
+      liveViewInterval = null;
+    }
+    isLiveViewActive = false;
+    document.getElementById('live-refresh-status').textContent = 'OFF';
+    document.getElementById('btn-toggle-live').textContent = 'Start Live';
+    document.getElementById('btn-toggle-live').classList.remove('btn-primary');
+  } else {
+    // Start live view
+    isLiveViewActive = true;
+    document.getElementById('live-refresh-status').textContent = 'ON (2s)';
+    document.getElementById('btn-toggle-live').textContent = 'Stop Live';
+    document.getElementById('btn-toggle-live').classList.add('btn-primary');
+    
+    // Initial load
+    loadRecentPipeline();
+    
+    // Set interval for refresh every 2 seconds
+    liveViewInterval = setInterval(loadRecentPipeline, 2000);
+  }
+}
+
+function formatTime(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// ============================================
 // Push Notifications
 // ============================================
 
@@ -627,6 +744,19 @@ async function checkNotificationStatus() {
       document.getElementById('notif-icon').textContent = '[OFF]';
       document.getElementById('notif-text').textContent = 'Notifications disabled';
       document.getElementById('btn-subscribe').classList.remove('hidden');
+    }
+    
+    // Fetch RMD server push status
+    try {
+      const rmdStatus = await fetchRmdPushStatus();
+      const rmdSyncEl = document.getElementById('info-rmd-sync');
+      if (rmdStatus.configured) {
+        rmdSyncEl.innerHTML = `<span class="text-success">${rmdStatus.subscriptionCount} subscription(s) in RMD</span>`;
+      } else {
+        rmdSyncEl.innerHTML = '<span class="text-warning">VAPID not configured</span>';
+      }
+    } catch (e) {
+      document.getElementById('info-rmd-sync').innerHTML = '<span class="text-danger">RMD not available</span>';
     }
   } catch (error) {
     document.getElementById('info-sw').textContent = 'Error: ' + error.message;
@@ -674,4 +804,30 @@ async function unsubscribe() {
 async function testNotification() {
   await sendTestNotification('Test', 'Test notification from Argus');
   showToast('Test notification sent', 'success');
+}
+
+async function syncSubscriptionsToServer() {
+  const resultEl = document.getElementById('sync-result');
+  resultEl.textContent = 'Syncing...';
+  resultEl.style.color = 'var(--text-muted)';
+  
+  try {
+    const response = await fetch('/api/sync-subscriptions', { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.success) {
+      resultEl.textContent = `Synced ${data.synced}/${data.total} subscriptions`;
+      resultEl.style.color = 'var(--success)';
+      document.getElementById('info-rmd-sync').textContent = `Synced (${data.synced})`;
+      showToast('Subscriptions synced successfully', 'success');
+    } else {
+      resultEl.textContent = 'Sync failed';
+      resultEl.style.color = 'var(--danger)';
+      showToast('Sync failed', 'error');
+    }
+  } catch (error) {
+    resultEl.textContent = 'Error: ' + error.message;
+    resultEl.style.color = 'var(--danger)';
+    showToast('Sync failed: ' + error.message, 'error');
+  }
 }

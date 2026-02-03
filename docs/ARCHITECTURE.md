@@ -86,12 +86,19 @@ graph TB
 
 ---
 
-## 2. Message Processing Pipeline (v0.7.1)
+## 2. Message Processing Pipeline (v0.8.0)
 
 ```mermaid
 flowchart TD
     subgraph "Input"
         MSG[Incoming WhatsApp Message]
+    end
+
+    subgraph "Stage 0: Proactive Trigger Check"
+        PT1[Load Pending Events]
+        PT2[Gemini Context Match]
+        PT3{Match Found?}
+        PT4[Send Proactive Reminder<br/>WhatsApp + Web Push]
     end
 
     subgraph "Stage 1: Heuristic Gate"
@@ -149,7 +156,12 @@ flowchart TD
         OUT4[Push Notification]
     end
 
-    MSG --> H1
+    MSG --> PT1
+    PT1 --> PT2
+    PT2 --> PT3
+    PT3 -->|Yes| PT4
+    PT3 -->|No| H1
+    PT4 --> H1
     H1 -->|No Signal| DROP[Drop Message]
     H1 -->|Has Signal| H2
     H2 --> C1
@@ -181,6 +193,8 @@ flowchart TD
     OUT3 --> OUT4
 
     style MSG fill:#25D366,color:#fff
+    style PT2 fill:#8b5cf6,color:#fff
+    style PT4 fill:#f59e0b,color:#fff
     style C1 fill:#10a37f,color:#fff
     style E1 fill:#4285f4,color:#fff
     style RE1 fill:#f59e0b,color:#fff
@@ -190,7 +204,68 @@ flowchart TD
 
 ---
 
-## 3. Auto-Learning System (v0.7.1)
+## 3. Proactive Trigger System (v0.8.0)
+
+```mermaid
+flowchart TB
+    subgraph "Incoming Message"
+        MSG[Any WhatsApp Message<br/>"Just reached Goa!"]
+    end
+
+    subgraph "Proactive Trigger Check"
+        LOAD[Load ALL Pending Events<br/>from Database]
+        SEND[Send to Gemini with<br/>Intelligent Prompt]
+        ANALYZE[Gemini Analyzes:<br/>"User in Goa, task mentions Goa"]
+        MATCH{Match Found?<br/>Confidence > 0.7}
+    end
+
+    subgraph "Send Reminder"
+        WA[WhatsApp Reply<br/>"You have pending task:<br/>Get cashew from Goa"]
+        PUSH[Web Push Notification]
+        MARK[Mark Event as<br/>proactive_triggered = 1]
+    end
+
+    subgraph "Continue Pipeline"
+        NORMAL[Normal Pipeline Processing<br/>Heuristic → Classification → Extraction]
+    end
+
+    MSG --> LOAD
+    LOAD --> SEND
+    SEND --> ANALYZE
+    ANALYZE --> MATCH
+    MATCH -->|Yes| WA
+    MATCH -->|No| NORMAL
+    WA --> PUSH
+    PUSH --> MARK
+    MARK --> NORMAL
+
+    style MSG fill:#25D366,color:#fff
+    style SEND fill:#4285f4,color:#fff
+    style WA fill:#f59e0b,color:#fff
+    style PUSH fill:#f59e0b,color:#fff
+```
+
+### Proactive Trigger Examples
+
+| User Message | Triggers This Task |
+|--------------|-------------------|
+| "Just reached Goa" | "Get cashew from Goa for Priya" |
+| "Meeting with John went well" | "Ask John about the project" |
+| "Feeling better now" | "Schedule doctor follow-up when better" |
+| "The client approved!" | "Send invoice after approval" |
+| "Finally got some free time" | Any pending leisure tasks |
+
+### Key Design Decisions
+
+1. **Gemini as primary matcher** - Uses 1M token context for intelligent matching
+2. **Check EVERY message** - Proactive check runs before normal pipeline
+3. **Skip same-chat triggers** below 0.8 confidence - User probably remembers their own task
+4. **WhatsApp + Web Push** - Dual notification for reliability
+5. **Persist everything** - No in-memory state, survives restarts
+
+---
+
+## 4. Auto-Learning System (v0.7.1)
 
 ```mermaid
 flowchart TB
@@ -749,3 +824,6 @@ curl -X POST http://localhost:3000/api/learning/run
 | v0.7.6 | Time-only messages fix |
 | v0.7.7 | Chat isolation, message direction tracking |
 | v0.7.8 | Comprehensive LLM logging, E2E test suite, max_tokens fix |
+| v0.7.9 | Reminder classification fix, UI event actions |
+| v0.8.1 | **Push Sync + Keyword Matching** - Push subscriptions sync to RMD, keyword fallback for proactive triggers, Pipeline Live View |
+| v0.8.0 | **Proactive Trigger System** - Intelligent context-based reminders via Push, Cron scheduler |

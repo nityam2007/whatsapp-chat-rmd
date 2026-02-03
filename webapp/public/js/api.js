@@ -309,6 +309,13 @@ async function sendTestNotification(title = 'Test', body = 'Test notification fr
   });
 }
 
+/**
+ * Fetch RMD push status (subscription count in main server)
+ */
+async function fetchRmdPushStatus() {
+  return apiCall('/api/rmd-push-status');
+}
+
 // Export for module usage
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -336,6 +343,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fetchVapidPublicKey,
     subscribeToNotifications,
     unsubscribeFromNotifications,
-    sendTestNotification
+    sendTestNotification,
+    fetchRmdPushStatus
   };
 }

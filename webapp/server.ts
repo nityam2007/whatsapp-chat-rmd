@@ -101,7 +101,7 @@ app.get('/api/vapid-public-key', (_req, res) => {
 });
 
 // Subscribe to push notifications
-app.post('/api/subscribe', (req, res) => {
+app.post('/api/subscribe', async (req, res) => {
   const subscription = req.body;
   
   if (!subscription || !subscription.endpoint) {
@@ -115,6 +115,22 @@ app.post('/api/subscribe', (req, res) => {
   
   console.log(`New subscription: ${id.slice(0, 8)}...`);
   
+  // Also register with main RMD server for proactive triggers
+  try {
+    const response = await fetch(`${RMD_API_URL}/api/push/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription),
+    });
+    if (response.ok) {
+      console.log(`Subscription synced with RMD server`);
+    } else {
+      console.warn(`Failed to sync subscription with RMD server: ${response.status}`);
+    }
+  } catch (error) {
+    console.warn('Could not sync subscription with RMD server:', error);
+  }
+  
   res.json({ 
     success: true, 
     message: 'Subscribed successfully',
@@ -123,7 +139,7 @@ app.post('/api/subscribe', (req, res) => {
 });
 
 // Unsubscribe
-app.post('/api/unsubscribe', (req, res) => {
+app.post('/api/unsubscribe', async (req, res) => {
   const { endpoint } = req.body;
   
   if (!endpoint) {
@@ -136,6 +152,17 @@ app.post('/api/unsubscribe', (req, res) => {
   saveSubscriptions();
   
   console.log(`Unsubscribed: ${id.slice(0, 8)}...`);
+  
+  // Also unregister from main RMD server
+  try {
+    await fetch(`${RMD_API_URL}/api/push/unsubscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    });
+  } catch (error) {
+    console.warn('Could not sync unsubscription with RMD server:', error);
+  }
   
   res.json({ success: true, message: 'Unsubscribed' });
 });
@@ -234,6 +261,54 @@ app.get('/api/stats', (_req, res) => {
     subscriptions: subscriptions.size,
     vapidConfigured: !!(vapidPublicKey && vapidPrivateKey)
   });
+});
+
+// Sync all subscriptions to main RMD server
+async function syncSubscriptionsToRMD() {
+  if (subscriptions.size === 0) {
+    console.log('No subscriptions to sync');
+    return { synced: 0, failed: 0 };
+  }
+  
+  let synced = 0;
+  let failed = 0;
+  
+  for (const [id, subscription] of subscriptions.entries()) {
+    try {
+      const response = await fetch(`${RMD_API_URL}/api/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription),
+      });
+      if (response.ok) {
+        synced++;
+      } else {
+        failed++;
+        console.warn(`Failed to sync subscription ${id.slice(0, 8)}: ${response.status}`);
+      }
+    } catch (error) {
+      failed++;
+      console.error(`Error syncing subscription ${id.slice(0, 8)}:`, error);
+    }
+  }
+  
+  console.log(`Synced ${synced}/${subscriptions.size} subscriptions to RMD server`);
+  return { synced, failed };
+}
+
+// Endpoint to manually sync subscriptions
+app.post('/api/sync-subscriptions', async (_req, res) => {
+  try {
+    const result = await syncSubscriptionsToRMD();
+    res.json({ 
+      success: true, 
+      ...result,
+      total: subscriptions.size,
+    });
+  } catch (error) {
+    console.error('Sync failed:', error);
+    res.status(500).json({ error: 'Sync failed' });
+  }
 });
 
 // =============================================
@@ -518,6 +593,19 @@ app.get('/api/metrics/summary', async (_req, res) => {
 });
 
 // =============================================
+// RMD Push Status (for dashboard display)
+// =============================================
+
+app.get('/api/rmd-push-status', async (_req, res) => {
+  try {
+    const data = await proxyToRMD('/api/push/status');
+    res.json(data);
+  } catch (error) {
+    res.json({ configured: false, subscriptionCount: 0, error: 'RMD not available' });
+  }
+});
+
+// =============================================
 // Health & Static Routes
 // =============================================
 
@@ -547,7 +635,7 @@ app.get('{*path}', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`
 +=====================================================================+
-|                   Argus Dashboard & Webapp v0.7.0                   |
+|                   Argus Dashboard & Webapp v0.8.1                   |
 +=====================================================================+
 |  Dashboard:     http://localhost:${String(PORT).padEnd(5)}                              |
 |  RMD API:       ${RMD_API_URL.padEnd(50)}|
@@ -562,4 +650,13 @@ app.listen(PORT, () => {
 |    - Push notification management                                   |
 +=====================================================================+
   `);
+  
+  // Sync subscriptions to main RMD server after startup
+  if (subscriptions.size > 0) {
+    setTimeout(() => {
+      syncSubscriptionsToRMD().catch(err => {
+        console.warn('Auto-sync failed (RMD server may not be running yet):', err.message);
+      });
+    }, 3000); // Wait 3 seconds for RMD server to be ready
+  }
 });

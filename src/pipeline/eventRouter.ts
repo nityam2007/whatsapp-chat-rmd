@@ -295,6 +295,12 @@ async function handleNewEvent(
     participants: extracted.participants || [],   // People involved in event
     created_by: extracted.created_by || sourceMessage.sender || null,  // Who created the event
     user_id: 'default',  // Single-user mode
+    // Proactive trigger fields
+    context_tags: extracted.context_tags || [],
+    location: extracted.location || null,
+    trigger_keywords: extracted.trigger_keywords || [],
+    proactive_triggered: false,
+    proactive_trigger_count: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

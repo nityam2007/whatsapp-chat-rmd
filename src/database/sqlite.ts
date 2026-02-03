@@ -282,6 +282,13 @@ function runMigrations(db: Database.Database): void {
   try { db.exec(`ALTER TABLE events ADD COLUMN participants TEXT`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE events ADD COLUMN created_by TEXT`); } catch { /* exists */ }
   
+  // Proactive trigger columns - for context-based reminders
+  try { db.exec(`ALTER TABLE events ADD COLUMN context_tags TEXT`); } catch { /* exists */ }  // JSON array: ["goa", "shopping", "gift"]
+  try { db.exec(`ALTER TABLE events ADD COLUMN location TEXT`); } catch { /* exists */ }       // Primary location: "goa", "mumbai", "office"
+  try { db.exec(`ALTER TABLE events ADD COLUMN trigger_keywords TEXT`); } catch { /* exists */ } // Keywords that should trigger reminder
+  try { db.exec(`ALTER TABLE events ADD COLUMN proactive_triggered INTEGER DEFAULT 0`); } catch { /* exists */ } // Has proactive reminder been sent?
+  try { db.exec(`ALTER TABLE events ADD COLUMN proactive_trigger_count INTEGER DEFAULT 0`); } catch { /* exists */ } // How many times triggered
+  
   // Reminders table columns
   try { db.exec(`ALTER TABLE reminders ADD COLUMN trigger_time_ist TEXT`); } catch { /* exists */ }
 
@@ -823,6 +830,26 @@ function rowToEvent(row: Record<string, unknown>): StoredEvent {
     }
   }
   
+  // Parse context_tags from JSON string
+  let context_tags: string[] = [];
+  if (row.context_tags && typeof row.context_tags === 'string') {
+    try {
+      context_tags = JSON.parse(row.context_tags as string);
+    } catch {
+      context_tags = [];
+    }
+  }
+  
+  // Parse trigger_keywords from JSON string
+  let trigger_keywords: string[] = [];
+  if (row.trigger_keywords && typeof row.trigger_keywords === 'string') {
+    try {
+      trigger_keywords = JSON.parse(row.trigger_keywords as string);
+    } catch {
+      trigger_keywords = [];
+    }
+  }
+  
   return {
     id: row.id as string,
     title: row.title as string | null,
@@ -841,6 +868,12 @@ function rowToEvent(row: Record<string, unknown>): StoredEvent {
     participants,
     created_by: row.created_by as string | null,
     user_id: (row.user_id as string) || 'default',  // Single-user mode default
+    // Proactive trigger fields
+    context_tags,
+    location: row.location as string | null,
+    trigger_keywords,
+    proactive_triggered: row.proactive_triggered === 1,
+    proactive_trigger_count: (row.proactive_trigger_count as number) || 0,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
@@ -1173,6 +1206,104 @@ export function getEventBySourceMessage(sourceMessageId: string): StoredEvent | 
   
   if (!row) return null;
   return rowToEvent(row);
+}
+
+// ============================================
+// Proactive Trigger Functions
+// ============================================
+
+/**
+ * Get pending events eligible for proactive triggers
+ * Returns events that haven't been proactively triggered yet
+ */
+export function getEventsForProactiveTrigger(limit: number = 100): StoredEvent[] {
+  const db = dbInstance || initDatabase();
+  
+  const stmt = db.prepare(`
+    SELECT e.*, m.content as source_message_content
+    FROM events e
+    LEFT JOIN messages m ON e.source_message_id = m.id
+    WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+    AND (e.proactive_triggered = 0 OR e.proactive_triggered IS NULL)
+    AND e.archived_at IS NULL
+    ORDER BY e.created_at DESC
+    LIMIT ?
+  `);
+  
+  const rows = stmt.all(limit) as Record<string, unknown>[];
+  return rows.map(rowToEvent);
+}
+
+/**
+ * Mark an event as proactively triggered
+ */
+export function markEventProactivelyTriggered(eventId: string): boolean {
+  const db = dbInstance || initDatabase();
+  const now = getISTTimestamp();
+  
+  const stmt = db.prepare(`
+    UPDATE events 
+    SET proactive_triggered = 1,
+        proactive_trigger_count = COALESCE(proactive_trigger_count, 0) + 1,
+        updated_at = ?
+    WHERE id = ?
+  `);
+  
+  const result = stmt.run(now, eventId);
+  logger.debug('Event marked as proactively triggered', { eventId, success: result.changes > 0 });
+  return result.changes > 0;
+}
+
+/**
+ * Reset proactive trigger status for an event (e.g., after snooze)
+ */
+export function resetProactiveTrigger(eventId: string): boolean {
+  const db = dbInstance || initDatabase();
+  const now = getISTTimestamp();
+  
+  const stmt = db.prepare(`
+    UPDATE events 
+    SET proactive_triggered = 0,
+        updated_at = ?
+    WHERE id = ?
+  `);
+  
+  const result = stmt.run(now, eventId);
+  logger.debug('Event proactive trigger reset', { eventId, success: result.changes > 0 });
+  return result.changes > 0;
+}
+
+/**
+ * Update event with context tags
+ */
+export function updateEventContextTags(
+  eventId: string, 
+  contextTags: string[], 
+  location?: string | null,
+  triggerKeywords?: string[]
+): boolean {
+  const db = dbInstance || initDatabase();
+  const now = getISTTimestamp();
+  
+  const stmt = db.prepare(`
+    UPDATE events 
+    SET context_tags = ?,
+        location = COALESCE(?, location),
+        trigger_keywords = COALESCE(?, trigger_keywords),
+        updated_at = ?
+    WHERE id = ?
+  `);
+  
+  const result = stmt.run(
+    JSON.stringify(contextTags),
+    location || null,
+    triggerKeywords ? JSON.stringify(triggerKeywords) : null,
+    now,
+    eventId
+  );
+  
+  logger.debug('Event context tags updated', { eventId, contextTags, location });
+  return result.changes > 0;
 }
 
 // ============================================
@@ -2121,9 +2252,11 @@ export function getDatabaseStats(): {
     'llm_calls',
     'llm_extraction_logs',
     'learned_patterns',
+    'semantic_patterns',
     'pattern_learning_runs',
     'archive_metadata',
     'push_subscriptions',
+    'message_embeddings',
   ];
   
   const stats = tables.map(tableName => {

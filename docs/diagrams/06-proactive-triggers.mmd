@@ -1,0 +1,40 @@
+flowchart TB
+    MSG[Any WhatsApp Message]
+
+    subgraph ProactiveCheck[Stage 0 - Proactive Trigger]
+        LOAD[Load Pending Events]
+        GEMINI[Gemini Context Match]
+        MATCH{Match Found?}
+    end
+
+    subgraph SendReminder[Send Reminder]
+        PUSH[Push Notification]
+        MARK[Mark Triggered]
+    end
+
+    subgraph Pipeline[Normal Pipeline]
+        HEURISTIC[Heuristic Gate]
+        CLASSIFY[Classification]
+        EXTRACT[LLM Extraction]
+        STORE[Store Event]
+    end
+
+    DB[(Database)]
+
+    MSG --> LOAD
+    LOAD --> GEMINI
+    GEMINI --> MATCH
+    MATCH -->|Yes| PUSH
+    MATCH -->|No| HEURISTIC
+    PUSH --> MARK
+    MARK --> DB
+    MARK --> HEURISTIC
+    HEURISTIC --> CLASSIFY
+    CLASSIFY --> EXTRACT
+    EXTRACT --> STORE
+    STORE --> DB
+
+    style MSG fill:#25D366,color:#fff
+    style GEMINI fill:#4285f4,color:#fff
+    style PUSH fill:#f59e0b,color:#fff
+    style DB fill:#6366f1,color:#fff

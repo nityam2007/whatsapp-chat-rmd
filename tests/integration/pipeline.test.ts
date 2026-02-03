@@ -186,6 +186,9 @@ describe('Pipeline Integration', () => {
         condition: { type: null, value: null },
         participants: [],
         confidence: 0.9,
+        context_tags: [],
+        trigger_keywords: [],
+        location: null,
       };
 
       const result = await routeEvent(extractedEvent, message);
@@ -209,6 +212,9 @@ describe('Pipeline Integration', () => {
         condition: { type: null, value: null },
         participants: [],
         confidence: 0.9,
+        context_tags: [],
+        trigger_keywords: [],
+        location: null,
       };
 
       const result = await routeEvent(extractedEvent, message);
