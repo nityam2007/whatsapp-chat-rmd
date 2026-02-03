@@ -91,6 +91,9 @@ export interface RuleEngineResult {
   event: ExtractedEvent | null;
   matchedPatterns: string[];
   skipLLM: boolean;
+  isTask: boolean;  // Indicates if this is a task-type event (bring/get/buy, etc.)
+  hasContextualTrigger: boolean;  // Indicates if event has a contextual trigger instead of explicit time
+  contextualTrigger: { type: string; value: string } | null;  // The contextual trigger if any
 }
 
 // Minimum confidence to skip LLM
@@ -167,6 +170,27 @@ const ACTION_PATTERNS = {
   academic: /\b(exam|exams|test|tests|quiz|quizzes|assignment|assignments|viva|presentation|project|homework|lab|practical|seminar|lecture|class|tutorial)\b/i,
 };
 
+// Contextual trigger patterns - these indicate conditional reminders
+const CONTEXTUAL_TRIGGER_PATTERNS = {
+  // Location-based triggers
+  onWayHome: /\b(on\s+(your|the)\s+way\s+home|ghar\s+aate\s+waqt|when\s+(you\s+)?(come|reach|get)\s+home)\b/i,
+  onWayToWork: /\b(on\s+(your|the)\s+way\s+to\s+(work|office)|office\s+jaate\s+waqt)\b/i,
+  whenLeaving: /\b(when\s+(you\s+)?leav(e|ing)|before\s+(you\s+)?leav(e|ing)|nikalne\s+se\s+pehle)\b/i,
+  whenReaching: /\b(when\s+(you\s+)?(reach|arrive|get\s+to)|pahunchne\s+par)\b/i,
+  nearLocation: /\b(near\s+(the\s+)?(\w+)|pass\s+(\w+))\b/i,
+  
+  // Time-based contextual triggers (not explicit times)
+  afterWork: /\b(after\s+work|office\s+ke\s+baad|kaam\s+ke\s+baad)\b/i,
+  beforeWork: /\b(before\s+work|office\s+se\s+pehle)\b/i,
+  duringLunch: /\b(during\s+lunch|lunch\s+(time|break)|lunch\s+mein)\b/i,
+  inEvening: /\b(in\s+the\s+evening|shaam\s+ko|evening\s+mein)\b/i,
+  inMorning: /\b(in\s+the\s+morning|subah|morning\s+mein)\b/i,
+  
+  // Event-based triggers
+  afterMeeting: /\b(after\s+(the\s+)?meeting|meeting\s+ke\s+baad)\b/i,
+  beforeMeeting: /\b(before\s+(the\s+)?meeting|meeting\s+se\s+pehle)\b/i,
+};
+
 // Word to number mapping
 const WORD_TO_NUMBER: Record<string, number> = {
   'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
@@ -213,6 +237,9 @@ export function extractWithRules(content: string, sender?: string): RuleEngineRe
       event: null,
       matchedPatterns: [],
       skipLLM: false,
+      isTask: false,
+      hasContextualTrigger: false,
+      contextualTrigger: null,
     };
   }
 
@@ -231,43 +258,72 @@ export function extractWithRules(content: string, sender?: string): RuleEngineRe
       event: null,
       matchedPatterns,
       skipLLM: false,
+      isTask: false,
+      hasContextualTrigger: false,
+      contextualTrigger: null,
     };
   }
   confidence += 0.3;
 
-  // Step 2: Extract time
+  // Check if this is a task-type event
+  const isTask = matchedPatterns.includes('action:task');
+
+  // Step 2: Extract contextual trigger (before time extraction)
+  const contextualTrigger = extractContextualTrigger(normalizedContent, matchedPatterns);
+  const hasContextualTrigger = contextualTrigger !== null;
+  
+  if (hasContextualTrigger) {
+    confidence += 0.25; // Contextual triggers add confidence
+  }
+
+  // Step 3: Extract time
   const extractedTime = extractTime(normalizedContent, matchedPatterns);
   if (extractedTime) {
     confidence += 0.3;
   }
 
-  // Step 3: Extract date
+  // Step 4: Extract date
   const extractedDate = extractDate(normalizedContent, matchedPatterns);
   if (extractedDate) {
     confidence += 0.2;
   }
 
-  // Step 4: Combine date and time
+  // Step 5: Combine date and time
   const startTime = combineDateTime(extractedDate, extractedTime);
 
-  // Step 5: Extract title/action
+  // Step 6: Extract title/action
   const title = extractTitle(normalizedContent, eventType);
   if (title) {
     confidence += 0.2;
   }
 
-  // Step 6: Extract participants
+  // Step 7: Extract participants
   const participants = extractParticipants(content); // Use original case
 
-  // Determine if we have enough confidence
-  const skipLLM = confidence >= MIN_CONFIDENCE_TO_SKIP_LLM && startTime !== null;
+  // Determine if we can skip LLM
+  // NEW LOGIC: For tasks, we can skip LLM if:
+  // 1. We have high confidence (>= 0.75) AND explicit time, OR
+  // 2. It's a task with a title (even without time) - will need user confirmation
+  // 3. We have a contextual trigger (even without explicit time)
+  const hasEnoughConfidence = confidence >= MIN_CONFIDENCE_TO_SKIP_LLM;
+  const canSkipForTask = isTask && title !== null;
+  const canSkipForContextual = hasContextualTrigger && title !== null;
+  
+  const skipLLM = (hasEnoughConfidence && startTime !== null) || 
+                  canSkipForTask || 
+                  canSkipForContextual;
+
+  // Build condition from contextual trigger
+  const condition = contextualTrigger 
+    ? { type: contextualTrigger.type as 'location' | 'time' | 'dependency', value: contextualTrigger.value }
+    : { type: null, value: null };
 
   const event: ExtractedEvent = {
     event_type: eventType,
     title: title || generateDefaultTitle(eventType, content),
     start_time: startTime,
     end_time: null,
-    condition: { type: null, value: null },
+    condition,
     participants,
     created_by: sender || null,
     confidence: Math.min(confidence, 0.95),
@@ -281,6 +337,9 @@ export function extractWithRules(content: string, sender?: string): RuleEngineRe
     startTime,
     matchedPatterns: matchedPatterns.length,
     skipLLM,
+    isTask,
+    hasContextualTrigger,
+    contextualTrigger: contextualTrigger?.type,
   });
 
   return {
@@ -289,6 +348,9 @@ export function extractWithRules(content: string, sender?: string): RuleEngineRe
     event,
     matchedPatterns,
     skipLLM,
+    isTask,
+    hasContextualTrigger,
+    contextualTrigger,
   };
 }
 
@@ -642,6 +704,84 @@ function extractDate(content: string, patterns: string[]): Date | null {
 
   // Default to today if we have a time but no explicit date
   // This will be handled in combineDateTime
+  return null;
+}
+
+/**
+ * Extracts contextual trigger from content
+ * These are conditions like "on your way home" or "when you leave"
+ * Returns { type: string, value: string } or null
+ */
+function extractContextualTrigger(
+  content: string, 
+  patterns: string[]
+): { type: string; value: string } | null {
+  // Check location-based triggers
+  if (CONTEXTUAL_TRIGGER_PATTERNS.onWayHome.test(content)) {
+    patterns.push('contextual:on_way_home');
+    return { type: 'location', value: 'on way home' };
+  }
+  
+  if (CONTEXTUAL_TRIGGER_PATTERNS.onWayToWork.test(content)) {
+    patterns.push('contextual:on_way_to_work');
+    return { type: 'location', value: 'on way to work' };
+  }
+  
+  if (CONTEXTUAL_TRIGGER_PATTERNS.whenLeaving.test(content)) {
+    patterns.push('contextual:when_leaving');
+    return { type: 'location', value: 'when leaving' };
+  }
+  
+  if (CONTEXTUAL_TRIGGER_PATTERNS.whenReaching.test(content)) {
+    patterns.push('contextual:when_reaching');
+    return { type: 'location', value: 'when reaching' };
+  }
+  
+  // Check near location pattern and extract the location
+  const nearMatch = content.match(CONTEXTUAL_TRIGGER_PATTERNS.nearLocation);
+  if (nearMatch) {
+    const location = nearMatch[3] || nearMatch[4] || 'unknown';
+    patterns.push('contextual:near_location');
+    return { type: 'location', value: `near ${location}` };
+  }
+  
+  // Check time-based contextual triggers
+  if (CONTEXTUAL_TRIGGER_PATTERNS.afterWork.test(content)) {
+    patterns.push('contextual:after_work');
+    return { type: 'time', value: 'after work' };
+  }
+  
+  if (CONTEXTUAL_TRIGGER_PATTERNS.beforeWork.test(content)) {
+    patterns.push('contextual:before_work');
+    return { type: 'time', value: 'before work' };
+  }
+  
+  if (CONTEXTUAL_TRIGGER_PATTERNS.duringLunch.test(content)) {
+    patterns.push('contextual:during_lunch');
+    return { type: 'time', value: 'during lunch' };
+  }
+  
+  if (CONTEXTUAL_TRIGGER_PATTERNS.inEvening.test(content)) {
+    patterns.push('contextual:in_evening');
+    return { type: 'time', value: 'in the evening' };
+  }
+  
+  if (CONTEXTUAL_TRIGGER_PATTERNS.inMorning.test(content)) {
+    patterns.push('contextual:in_morning');
+    return { type: 'time', value: 'in the morning' };
+  }
+  
+  // Check event-based triggers
+  if (CONTEXTUAL_TRIGGER_PATTERNS.afterMeeting.test(content)) {
+    patterns.push('contextual:after_meeting');
+    return { type: 'dependency', value: 'after meeting' };
+  }
+  
+  if (CONTEXTUAL_TRIGGER_PATTERNS.beforeMeeting.test(content)) {
+    patterns.push('contextual:before_meeting');
+    return { type: 'dependency', value: 'before meeting' };
+  }
+  
   return null;
 }
 

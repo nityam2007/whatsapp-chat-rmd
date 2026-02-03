@@ -103,7 +103,10 @@ async function sendWebPushToAll(payload: NotificationPayload): Promise<boolean> 
               body: payload.body,
               type: payload.type,
               event_id: payload.event_id,
+              icon: payload.icon,
+              badge: payload.badge,
               data: payload.data,
+              actions: payload.actions,
             })
           );
           
@@ -177,7 +180,10 @@ export async function sendNotificationToUser(
             body: payload.body,
             type: payload.type,
             event_id: payload.event_id,
+            icon: payload.icon,
+            badge: payload.badge,
             data: payload.data,
+            actions: payload.actions,
           })
         );
         

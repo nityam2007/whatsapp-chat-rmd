@@ -51,12 +51,21 @@ const COMPLETE_KEYWORDS = [
 ];
 
 /**
+ * Options for routing an event
+ */
+export interface RouteEventOptions {
+  needsConfirmation?: boolean;  // If true, event will be created with pending_confirmation status
+}
+
+/**
  * Routes an extracted event to the appropriate handler
  */
 export async function routeEvent(
   extractedEvent: ExtractedEvent,
-  sourceMessage: StoredMessage
+  sourceMessage: StoredMessage,
+  options: RouteEventOptions = {}
 ): Promise<StoredEvent | null> {
+  const { needsConfirmation = false } = options;
   logger.info('Routing event', {
     eventType: extractedEvent.event_type,
     messageId: sourceMessage.id,
@@ -74,7 +83,7 @@ export async function routeEvent(
 
   switch (extractedEvent.event_type) {
     case 'new_event':
-      return handleNewEvent(extractedEvent, sourceMessage);
+      return handleNewEvent(extractedEvent, sourceMessage, { needsConfirmation });
     
     case 'update_event':
       return handleUpdateEvent(extractedEvent, sourceMessage);
@@ -94,8 +103,10 @@ export async function routeEvent(
  */
 async function handleNewEvent(
   extracted: ExtractedEvent,
-  sourceMessage: StoredMessage
+  sourceMessage: StoredMessage,
+  options: { needsConfirmation?: boolean } = {}
 ): Promise<StoredEvent> {
+  const { needsConfirmation = false } = options;
   const db = getDatabase();
   const vectorStore = getVectorStore();
 
@@ -143,7 +154,10 @@ async function handleNewEvent(
   
   // Determine event status
   let status: EventStatus = 'soft';
-  if (extracted.start_time) {
+  if (needsConfirmation) {
+    // Event needs user confirmation (task without time or contextual trigger)
+    status = 'pending_confirmation';
+  } else if (extracted.start_time) {
     status = 'active';
   } else if (extracted.condition.type) {
     status = 'pending';
@@ -212,6 +226,37 @@ async function handleNewEvent(
         data: { conflictingEvents: conflict.conflictingEvents.map(e => e.id) },
       });
     }
+  }
+
+  // Send notification for pending_confirmation events with accept/decline actions
+  if (status === 'pending_confirmation') {
+    const conditionText = extracted.condition.value 
+      ? ` (${extracted.condition.value})` 
+      : '';
+    
+    await sendNotification({
+      type: 'reminder',
+      event_id: event.id,
+      title: 'New Reminder',
+      body: `${event.title}${conditionText}`,
+      icon: '/icons/reminder-192.png',
+      data: { 
+        eventId: event.id,
+        status: 'pending_confirmation',
+        condition: extracted.condition,
+        sender: sourceMessage.sender,
+        requiresConfirmation: true,
+      },
+      actions: [
+        { action: 'accept', title: 'Accept' },
+        { action: 'decline', title: 'Decline' },
+      ],
+    });
+    
+    logger.info('Sent pending confirmation notification', {
+      eventId: event.id,
+      title: event.title,
+    });
   }
 
   // Schedule reminder if has start time

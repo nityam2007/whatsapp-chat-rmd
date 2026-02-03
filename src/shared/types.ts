@@ -15,7 +15,7 @@ export type EventType = z.infer<typeof EventTypeSchema>;
 export const ConditionTypeSchema = z.enum(['location', 'time', 'dependency']).nullable();
 export type ConditionType = z.infer<typeof ConditionTypeSchema>;
 
-export const EventStatusSchema = z.enum(['active', 'pending', 'soft', 'completed', 'cancelled']);
+export const EventStatusSchema = z.enum(['active', 'pending', 'pending_confirmation', 'soft', 'completed', 'cancelled', 'declined', 'snoozed']);
 export type EventStatus = z.infer<typeof EventStatusSchema>;
 
 // ============================================

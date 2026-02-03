@@ -25,11 +25,16 @@ export interface Config {
   // Redis
   redisUrl: string;
 
-  // OpenAI
+  // OpenAI (for embeddings)
   openaiApiKey: string;
   openaiModelSmall: string;
   openaiModelBig: string;
   openaiEmbeddingModel: string;
+
+  // Gemini (for LLM - OpenAI compatible)
+  geminiApiKey: string;
+  geminiModel: string;
+  geminiApiUrl: string;
 
   // Evolution API
   evolutionApiUrl: string;
@@ -99,11 +104,16 @@ export const config: Config = {
   // Redis
   redisUrl: getEnvVar('REDIS_URL', 'redis://localhost:6379'),
 
-  // OpenAI
+  // OpenAI (for embeddings)
   openaiApiKey: getEnvVar('OPENAI_API_KEY', ''),
   openaiModelSmall: getEnvVar('OPENAI_MODEL_SMALL', 'gpt-4o-mini'),
   openaiModelBig: getEnvVar('OPENAI_MODEL_BIG', 'gpt-4o'),
   openaiEmbeddingModel: getEnvVar('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small'),
+
+  // Gemini (for LLM - OpenAI compatible)
+  geminiApiKey: getEnvVar('GEMINI_API_KEY', ''),
+  geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.0-flash'),
+  geminiApiUrl: getEnvVar('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/openai'),
 
   // Evolution API
   evolutionApiUrl: getEnvVar('EVOLUTION_API_URL', 'http://localhost:8080'),

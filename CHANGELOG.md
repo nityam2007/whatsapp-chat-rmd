@@ -5,6 +5,63 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.6.0] - 2026-02-03
+
+### Added - Pending Confirmation Feature
+
+A new feature that allows capturing any type of reminder or task from WhatsApp messages (like "bring vegetable on your way home") and creating events that can be accepted or declined via push notification.
+
+#### Problem Solved
+
+Previously, messages like "bring vegetable on your way home" were detected by the heuristic gate but the rule engine would return `skipLLM: false` because there was no explicit time. This caused the pipeline to fall back to LLM extraction, and if the LLM was unavailable or failed, no event was created.
+
+#### New Behavior
+
+- **Tasks without explicit time** (e.g., "bring sabzi", "get milk") are now captured with `pending_confirmation` status
+- **Contextual triggers** (e.g., "on your way home", "when you leave", "after work") are detected and stored as conditions
+- **Push notifications** with Accept/Decline actions are sent immediately for pending confirmation events
+
+#### New Components
+
+- **Contextual Trigger Detection** (`src/pipeline/ruleEngine.ts`)
+  - Location-based triggers: "on your way home", "on way to work", "when leaving", "when reaching", "near [location]"
+  - Time-based triggers: "after work", "before work", "during lunch", "in the evening", "in the morning"
+  - Event-based triggers: "after meeting", "before meeting"
+
+- **Enhanced Rule Engine Result** (`src/pipeline/ruleEngine.ts`)
+  - New fields: `isTask`, `hasContextualTrigger`, `contextualTrigger`
+  - Tasks now skip LLM even without explicit time
+  - Contextual triggers are extracted and stored as event conditions
+
+- **New Event Status** (`src/shared/types.ts`)
+  - Added `pending_confirmation`, `declined`, `snoozed` to `EventStatus` enum
+
+- **Pending Confirmation Notifications** (`src/pipeline/eventRouter.ts`)
+  - Events with `pending_confirmation` status trigger immediate push notifications
+  - Notifications include Accept/Decline action buttons
+
+- **Push Notification Actions** (`src/notifications/index.ts`)
+  - Added `actions`, `icon`, `badge` fields to push notification payload
+
+#### Examples
+
+| Message | Result |
+|---------|--------|
+| "bring vegetable on your way home" | ✅ Event created, status: `pending_confirmation`, condition: `location:on way home` |
+| "get milk when you leave office" | ✅ Event created, status: `pending_confirmation`, condition: `location:when leaving` |
+| "buy coffee after work" | ✅ Event created, status: `pending_confirmation`, condition: `time:after work` |
+| "bring sabzi" | ✅ Event created, status: `pending_confirmation` |
+| "meeting tomorrow at 3pm" | ✅ Event created, status: `active` (has explicit time) |
+
+#### API Endpoints
+
+The following existing endpoints work with pending confirmation events:
+
+- `POST /api/events/:id/accept` - Accept a pending confirmation event (changes status to `active`)
+- `POST /api/events/:id/decline` - Decline a pending confirmation event (changes status to `declined`)
+
+---
+
 ## [0.5.0] - 2025-02-02
 
 ### Added - Auto-Learning System

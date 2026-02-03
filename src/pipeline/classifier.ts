@@ -37,6 +37,7 @@ Message to classify:
 `;
 
 let openaiClient: OpenAI | null = null;
+let geminiClient: OpenAI | null = null;
 
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
@@ -48,22 +49,62 @@ function getOpenAIClient(): OpenAI {
 }
 
 /**
+ * Get Gemini client (OpenAI-compatible)
+ */
+function getGeminiClient(): OpenAI {
+  if (!geminiClient) {
+    geminiClient = new OpenAI({
+      apiKey: config.geminiApiKey,
+      baseURL: config.geminiApiUrl,
+    });
+  }
+  return geminiClient;
+}
+
+/**
+ * Check if Gemini is configured
+ */
+function isGeminiConfigured(): boolean {
+  return !!config.geminiApiKey;
+}
+
+/**
+ * Get the LLM client for classification (prefers Gemini, falls back to OpenAI)
+ */
+function getLLMClient(): { client: OpenAI; model: string; provider: string } {
+  if (isGeminiConfigured()) {
+    return {
+      client: getGeminiClient(),
+      model: config.geminiModel,
+      provider: 'gemini',
+    };
+  }
+  return {
+    client: getOpenAIClient(),
+    model: config.openaiModelSmall,
+    provider: 'openai',
+  };
+}
+
+/**
  * Classifies a message using the small LLM
  */
 export async function classifyMessage(content: string): Promise<ClassificationResult> {
   logger.debug('Classifying message', { contentLength: content.length });
 
-  // If no API key, use fallback classification
-  if (!config.openaiApiKey) {
-    logger.warn('No OpenAI API key configured, using fallback classification');
+  // If no API key configured (neither Gemini nor OpenAI), use fallback
+  if (!config.geminiApiKey && !config.openaiApiKey) {
+    logger.warn('No LLM API key configured, using fallback classification');
     return fallbackClassification(content);
   }
 
   try {
-    const client = getOpenAIClient();
+    const { client, model, provider } = getLLMClient();
+    
+    logger.debug('Using LLM provider for classification', { provider, model });
     
     const response = await client.chat.completions.create({
-      model: config.openaiModelSmall,
+      model,
       messages: [
         {
           role: 'user',
@@ -82,6 +123,7 @@ export async function classifyMessage(content: string): Promise<ClassificationRe
     logger.debug('Classification result', {
       eventType: result.event_type,
       confidence: result.confidence,
+      provider,
     });
 
     return result;

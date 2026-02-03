@@ -153,6 +153,7 @@ CONVERSATION CONTEXT:
 `;
 
 let openaiClient: OpenAI | null = null;
+let geminiClient: OpenAI | null = null;
 
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
@@ -161,6 +162,45 @@ function getOpenAIClient(): OpenAI {
     });
   }
   return openaiClient;
+}
+
+/**
+ * Get Gemini client (OpenAI-compatible)
+ * Uses Gemini API with OpenAI SDK
+ */
+function getGeminiClient(): OpenAI {
+  if (!geminiClient) {
+    geminiClient = new OpenAI({
+      apiKey: config.geminiApiKey,
+      baseURL: config.geminiApiUrl,
+    });
+  }
+  return geminiClient;
+}
+
+/**
+ * Check if Gemini is configured
+ */
+function isGeminiConfigured(): boolean {
+  return !!config.geminiApiKey;
+}
+
+/**
+ * Get the LLM client (prefers Gemini, falls back to OpenAI)
+ */
+function getLLMClient(): { client: OpenAI; model: string; provider: string } {
+  if (isGeminiConfigured()) {
+    return {
+      client: getGeminiClient(),
+      model: config.geminiModel,
+      provider: 'gemini',
+    };
+  }
+  return {
+    client: getOpenAIClient(),
+    model: config.openaiModelBig,
+    provider: 'openai',
+  };
 }
 
 /**
@@ -183,17 +223,18 @@ export async function extractEvent(
 ): Promise<ExtractedEvent> {
   logger.debug('Extracting event', { contextLength: context.length, retryCount });
 
-  // If no API key, use fallback
-  if (!config.openaiApiKey) {
-    logger.warn('No OpenAI API key configured, using fallback extraction');
+  // If no API key configured (neither Gemini nor OpenAI), use fallback
+  if (!config.geminiApiKey && !config.openaiApiKey) {
+    logger.warn('No LLM API key configured, using fallback extraction');
     return createEmptyEvent();
   }
 
   const startTime = Date.now();
   
+  // Get LLM client (prefers Gemini, falls back to OpenAI)
+  const { client, model, provider } = getLLMClient();
+  
   try {
-    const client = getOpenAIClient();
-    
     // Get current time in both UTC and IST
     const now = new Date();
     const utcTime = now.toISOString();
@@ -235,8 +276,10 @@ export async function extractEvent(
       .replace('{{TOMORROW_DATE}}', formatDateShort(tomorrowIST))
       + context;
     
+    logger.debug('Using LLM provider', { provider, model });
+    
     const response = await client.chat.completions.create({
-      model: config.openaiModelBig,
+      model,
       messages: [
         {
           role: 'system',
@@ -249,7 +292,6 @@ export async function extractEvent(
       ],
       temperature: 0.1,
       max_tokens: 300,
-      response_format: { type: 'json_object' },
     });
 
     const responseText = response.choices[0]?.message?.content?.trim() || '';
@@ -279,6 +321,7 @@ export async function extractEvent(
       startTime: result.start_time,
       latencyMs,
       tokensUsed,
+      provider,
     });
 
     return result;
@@ -297,10 +340,20 @@ export async function extractEvent(
 
 /**
  * Parses and validates the LLM extraction response
+ * Handles both raw JSON and markdown-wrapped JSON (```json ... ```)
  */
 function parseExtractionResponse(response: string): ExtractedEvent {
   try {
-    const parsed = JSON.parse(response);
+    // Strip markdown code blocks if present (Gemini often wraps in ```json ... ```)
+    let cleanResponse = response.trim();
+    
+    // Remove ```json ... ``` or ``` ... ``` wrapping
+    const codeBlockMatch = cleanResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      cleanResponse = codeBlockMatch[1].trim();
+    }
+    
+    const parsed = JSON.parse(cleanResponse);
     return validateAndNormalize(parsed);
   } catch {
     logger.warn('Failed to parse extraction response', { response });

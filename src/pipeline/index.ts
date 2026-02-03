@@ -348,10 +348,17 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
     // Use rule engine result if confident enough, otherwise fall back to LLM
     let extractedEvent;
     let llmDuration = 0;
+    let needsConfirmation = false;  // Flag for events that need user confirmation
     
     if (ruleResult.skipLLM && ruleResult.event) {
       // Rule engine was confident - skip LLM
       extractedEvent = ruleResult.event;
+      
+      // Check if this event needs user confirmation
+      // Events need confirmation if they're tasks without explicit time
+      // or if they have a contextual trigger instead of a fixed time
+      needsConfirmation = (ruleResult.isTask && !extractedEvent.start_time) ||
+                          ruleResult.hasContextualTrigger;
       
       // Record metrics - rule engine success
       metrics.recordRuleEngineExtraction();
@@ -360,6 +367,9 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
         messageId: message.id,
         confidence: ruleResult.confidence,
         title: extractedEvent.title,
+        needsConfirmation,
+        isTask: ruleResult.isTask,
+        hasContextualTrigger: ruleResult.hasContextualTrigger,
       });
       
       storePipelineLog({
@@ -372,6 +382,10 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
           confidence: extractedEvent.confidence,
           startTime: extractedEvent.start_time,
           source: 'rule_engine',
+          needsConfirmation,
+          isTask: ruleResult.isTask,
+          hasContextualTrigger: ruleResult.hasContextualTrigger,
+          contextualTrigger: ruleResult.contextualTrigger,
         },
         duration_ms: ruleEngineDuration,
       });
@@ -470,7 +484,7 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
     // Step 10: Route Event
     // =====================================
     timer.mark('routing_start');
-    const storedEvent = await routeEvent(extractedEvent, message);
+    const storedEvent = await routeEvent(extractedEvent, message, { needsConfirmation });
     timer.mark('routing_end');
     const routingDuration = timer.duration('routing_start', 'routing_end');
     
