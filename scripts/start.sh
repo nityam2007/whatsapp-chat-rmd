@@ -333,6 +333,53 @@ setup_environment() {
     # Create directories
     mkdir -p data/db data/vectors logs
     log_success "Data directories ready"
+    
+    # Setup Evolution API environment
+    if [ -d "evolution-api" ]; then
+        if [ ! -f "evolution-api/.env" ]; then
+            if [ -f "evolution-api/.env.example.local" ]; then
+                cp evolution-api/.env.example.local evolution-api/.env
+                log_success "Evolution API .env created from .env.example.local"
+            elif [ -f "evolution-api/.env.example" ]; then
+                cp evolution-api/.env.example evolution-api/.env
+                log_warn "Evolution API .env created from .env.example - may need configuration"
+            fi
+        else
+            log_success "Evolution API .env exists"
+        fi
+    fi
+}
+
+# ===========================================
+# Setup Evolution API Database
+# ===========================================
+setup_evolution_database() {
+    if [ ! -d "evolution-api" ]; then
+        return 0
+    fi
+    
+    log_header "Evolution API Database"
+    
+    # Check if migrations have been run by looking for the prisma client
+    if [ -d "evolution-api/node_modules/.prisma/client" ]; then
+        log_success "Prisma client already generated"
+    else
+        log_step "Generating Prisma client..."
+        if (cd evolution-api && npm run db:generate 2>/dev/null); then
+            log_success "Prisma client generated"
+        else
+            log_warn "Failed to generate Prisma client - will retry after PostgreSQL starts"
+        fi
+    fi
+    
+    # Check if we need to run migrations
+    # We'll run deploy which is idempotent (safe to run multiple times)
+    log_step "Running database migrations..."
+    if (cd evolution-api && DATABASE_PROVIDER=postgresql npm run db:deploy 2>/dev/null); then
+        log_success "Database migrations applied"
+    else
+        log_warn "Database migrations may have failed - check logs/evolution.log"
+    fi
 }
 
 # ===========================================
@@ -684,6 +731,7 @@ main() {
     setup_dependencies
     setup_environment
     start_docker_services
+    setup_evolution_database
     start_nodejs_services
     show_status
     show_quick_reference
