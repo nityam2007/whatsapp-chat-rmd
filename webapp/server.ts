@@ -383,13 +383,15 @@ app.get('/health', (_req, res) => {
 });
 
 // Proxy to Grafana (if available)
-app.get('/grafana/*', (req, res) => {
+// Express 5 uses {*name} syntax for wildcard routes
+app.get('/grafana/{*splat}', (req, res) => {
   const grafanaUrl = process.env.GRAFANA_URL || 'http://localhost:3001';
-  res.redirect(`${grafanaUrl}${req.path.replace('/grafana', '')}`);
+  const subPath = (req.params as any).splat || '';
+  res.redirect(`${grafanaUrl}/${subPath}`);
 });
 
-// Serve index.html for all other routes
-app.get('*', (_req, res) => {
+// Serve index.html for all other routes (Express 5 wildcard syntax)
+app.get('{*path}', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
