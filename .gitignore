@@ -28,6 +28,8 @@ data/vectors/*
 # Logs
 logs/*
 !logs/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
 *.log
 npm-debug.log*
 
