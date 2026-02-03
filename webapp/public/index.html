@@ -644,7 +644,15 @@
       <section id="page-contacts" class="page">
         <div class="header">
           <h2>Contacts</h2>
-          <button class="btn btn-outline" onclick="loadContacts()">Refresh</button>
+          <div class="filters">
+            <select id="contacts-filter" onchange="loadContacts()">
+              <option value="">All Contacts</option>
+              <option value="users">Users Only</option>
+              <option value="groups">Groups Only</option>
+            </select>
+            <input type="text" id="contacts-search" placeholder="Search name..." onkeyup="loadContacts()" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text);">
+            <button class="btn btn-outline" onclick="loadContacts()">Refresh</button>
+          </div>
         </div>
         
         <div class="card">
@@ -653,16 +661,18 @@
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Phone</th>
+                  <th>Phone / Chat ID</th>
                   <th>Type</th>
                   <th>Messages</th>
                   <th>Last Active</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="contacts-table"></tbody>
             </table>
           </div>
         </div>
+        <div id="contacts-stats" style="margin-top:10px;font-size:12px;color:var(--text-dim);"></div>
       </section>
       
       <!-- Reminders Page -->
@@ -1137,24 +1147,102 @@
       }
     }
     
+    // Format phone number for display
+    function formatPhoneNumber(phone) {
+      if (!phone) return '-';
+      // If it looks like a test chat ID, return as-is
+      if (phone.includes('test') || phone.includes('-') || !phone.match(/^\d+$/)) {
+        return phone;
+      }
+      // Format Indian numbers: +91 XXXXX XXXXX
+      if (phone.startsWith('91') && phone.length >= 12) {
+        return `+91 ${phone.substring(2, 7)} ${phone.substring(7)}`;
+      }
+      // Generic formatting: +XX XXX XXX XXXX
+      if (phone.length >= 10) {
+        return `+${phone.substring(0, 2)} ${phone.substring(2, 5)} ${phone.substring(5, 8)} ${phone.substring(8)}`;
+      }
+      return phone;
+    }
+    
     // Contacts
     async function loadContacts() {
       try {
         const res = await fetch(`${API_URL}/api/contacts`);
         const data = await res.json();
         
+        let contacts = data.contacts || [];
+        
+        // Apply filters
+        const filterType = document.getElementById('contacts-filter').value;
+        const searchTerm = document.getElementById('contacts-search').value.toLowerCase();
+        
+        if (filterType === 'users') {
+          contacts = contacts.filter(c => !c.is_group);
+        } else if (filterType === 'groups') {
+          contacts = contacts.filter(c => c.is_group);
+        }
+        
+        if (searchTerm) {
+          contacts = contacts.filter(c => 
+            c.name?.toLowerCase().includes(searchTerm) || 
+            c.phone?.toLowerCase().includes(searchTerm)
+          );
+        }
+        
+        // Calculate stats
+        const totalContacts = data.contacts?.length || 0;
+        const totalUsers = data.contacts?.filter(c => !c.is_group).length || 0;
+        const totalGroups = data.contacts?.filter(c => c.is_group).length || 0;
+        const totalMessages = data.contacts?.reduce((sum, c) => sum + (c.message_count || 0), 0) || 0;
+        
+        document.getElementById('contacts-stats').innerHTML = 
+          `Total: ${totalContacts} contacts (${totalUsers} users, ${totalGroups} groups) | ${totalMessages.toLocaleString()} messages tracked | Showing: ${contacts.length}`;
+        
         const tbody = document.getElementById('contacts-table');
-        tbody.innerHTML = data.contacts?.map(c => `
+        tbody.innerHTML = contacts.map(c => `
           <tr>
-            <td>${escapeHtml(c.name)}</td>
-            <td class="mono">${c.phone || '-'}</td>
+            <td><strong>${escapeHtml(c.name)}</strong></td>
+            <td class="mono" style="font-size:12px;">${formatPhoneNumber(c.phone)}</td>
             <td>${c.is_group ? '<span class="badge badge-info">Group</span>' : '<span class="badge badge-soft">User</span>'}</td>
-            <td class="num">${c.message_count}</td>
-            <td style="font-size:11px;">${formatDate(c.last_seen)}</td>
+            <td class="num"><strong>${c.message_count}</strong></td>
+            <td style="font-size:11px;white-space:nowrap;">${formatDate(c.last_seen)}</td>
+            <td>
+              <button class="btn btn-sm" onclick="viewContactEvents('${escapeHtml(c.name)}')" title="View events for this contact">Events</button>
+            </td>
           </tr>
-        `).join('') || '<tr><td colspan="5" class="empty-state">No contacts</td></tr>';
+        `).join('') || '<tr><td colspan="6" class="empty-state">No contacts</td></tr>';
       } catch (error) {
         console.error('Contacts load failed:', error);
+      }
+    }
+    
+    // View events for a specific contact
+    async function viewContactEvents(name) {
+      try {
+        const res = await fetch(`${API_URL}/api/contacts/${encodeURIComponent(name)}/events`);
+        const data = await res.json();
+        
+        let content = `<h3>Events for: ${escapeHtml(name)}</h3>`;
+        if (data.events && data.events.length > 0) {
+          content += `<p>Found ${data.events.length} events:</p>`;
+          content += '<table style="width:100%;font-size:13px;"><thead><tr><th>Title</th><th>Date/Time</th><th>Status</th></tr></thead><tbody>';
+          data.events.forEach(e => {
+            content += `<tr>
+              <td>${escapeHtml(e.title)}</td>
+              <td style="white-space:nowrap;">${e.datetime_ist || e.datetime || '-'}</td>
+              <td><span class="badge badge-${e.status === 'active' ? 'success' : e.status === 'declined' ? 'danger' : 'soft'}">${e.status}</span></td>
+            </tr>`;
+          });
+          content += '</tbody></table>';
+        } else {
+          content += '<p class="empty-state">No events found for this contact.</p>';
+        }
+        
+        showModal('Contact Events', content);
+      } catch (error) {
+        console.error('Failed to load contact events:', error);
+        showToast('Failed to load events', 'error');
       }
     }
     

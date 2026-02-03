@@ -358,6 +358,15 @@ app.get('/api/contacts', async (req, res) => {
   }
 });
 
+app.get('/api/contacts/:name/events', async (req, res) => {
+  try {
+    const data = await proxyToRMD(`/api/contacts/${encodeURIComponent(req.params.name)}/events`);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch contact events' });
+  }
+});
+
 // Logs
 app.get('/api/logs', async (_req, res) => {
   try {
