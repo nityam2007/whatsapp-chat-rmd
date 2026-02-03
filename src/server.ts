@@ -446,6 +446,144 @@ export function createServer(): Express {
   // Pipeline Logs API
   // =============================================
   
+  // List available pipeline log files
+  app.get('/api/logs', apiAuth, (_req: Request, res: Response) => {
+    try {
+      const logsDir = path.join(process.cwd(), 'logs', 'pipeline');
+      
+      if (!fs.existsSync(logsDir)) {
+        res.json({ logs: [] });
+        return;
+      }
+      
+      const files = fs.readdirSync(logsDir)
+        .filter(f => f.endsWith('.log'))
+        .map(f => {
+          const stats = fs.statSync(path.join(logsDir, f));
+          return {
+            name: f.replace('.log', ''),
+            size: stats.size,
+            modified: stats.mtime.toISOString(),
+          };
+        });
+      
+      res.json({ logs: files, timestamp: getISTTimestamp() });
+    } catch (error) {
+      logger.error('Failed to list logs', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // List all log files (both pipeline and root) - MUST be before /api/logs/:step
+  app.get('/api/logs/all', apiAuth, (_req: Request, res: Response) => {
+    try {
+      const logsDir = path.join(process.cwd(), 'logs');
+      const pipelineDir = path.join(logsDir, 'pipeline');
+      const dataLogsDir = path.join(process.cwd(), 'data', 'logs');
+      
+      const result: { name: string; path: string; size: number; modified: string }[] = [];
+      
+      // Root log files
+      if (fs.existsSync(logsDir)) {
+        const rootFiles = fs.readdirSync(logsDir)
+          .filter(f => f.endsWith('.log'))
+          .map(f => {
+            const stats = fs.statSync(path.join(logsDir, f));
+            return {
+              name: f,
+              path: `logs/${f}`,
+              size: stats.size,
+              modified: stats.mtime.toISOString(),
+            };
+          });
+        result.push(...rootFiles);
+      }
+      
+      // Pipeline log files
+      if (fs.existsSync(pipelineDir)) {
+        const pipelineFiles = fs.readdirSync(pipelineDir)
+          .filter(f => f.endsWith('.log'))
+          .map(f => {
+            const stats = fs.statSync(path.join(pipelineDir, f));
+            return {
+              name: `pipeline/${f}`,
+              path: `logs/pipeline/${f}`,
+              size: stats.size,
+              modified: stats.mtime.toISOString(),
+            };
+          });
+        result.push(...pipelineFiles);
+      }
+      
+      // Data logs
+      if (fs.existsSync(dataLogsDir)) {
+        const dataFiles = fs.readdirSync(dataLogsDir)
+          .filter(f => f.endsWith('.log'))
+          .map(f => {
+            const stats = fs.statSync(path.join(dataLogsDir, f));
+            return {
+              name: `data/${f}`,
+              path: `data/logs/${f}`,
+              size: stats.size,
+              modified: stats.mtime.toISOString(),
+            };
+          });
+        result.push(...dataFiles);
+      }
+      
+      res.json({ 
+        logs: result,
+        count: result.length,
+        timestamp: getISTTimestamp() 
+      });
+    } catch (error) {
+      logger.error('Failed to list all logs', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Read any log file (not just pipeline) - MUST be before /api/logs/:step
+  app.get('/api/logs/file/:filename', apiAuth, (req: Request, res: Response) => {
+    try {
+      const filename = req.params.filename as string;
+      const lines = parseInt(req.query.lines as string) || 100;
+      
+      // Security: only allow specific log files
+      const allowedFiles = [
+        'rmd.log', 'error.log', 'exceptions.log', 'rejections.log',
+        'evolution.log', 'webapp.log'
+      ];
+      
+      if (!allowedFiles.includes(filename)) {
+        res.status(400).json({ error: 'Invalid log file', allowedFiles });
+        return;
+      }
+      
+      const logPath = path.join(process.cwd(), 'logs', filename);
+      
+      if (!fs.existsSync(logPath)) {
+        res.json({ filename, entries: [], message: 'Log file not found or empty' });
+        return;
+      }
+      
+      const content = fs.readFileSync(logPath, 'utf-8');
+      const allLines = content.split('\n').filter(Boolean);
+      const entries = allLines.slice(-lines); // Get last N lines
+      
+      res.json({
+        filename,
+        entries,
+        totalLines: allLines.length,
+        count: entries.length,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Failed to read log file', { error, filename: req.params.filename });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get specific pipeline step log - MUST be after /api/logs/all and /api/logs/file/:filename
   app.get('/api/logs/:step', apiAuth, (req: Request, res: Response) => {
     try {
       const step = req.params.step as string;
@@ -485,34 +623,6 @@ export function createServer(): Express {
       });
     } catch (error) {
       logger.error('Failed to read logs', { error, step: req.params.step });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // List available log files
-  app.get('/api/logs', apiAuth, (_req: Request, res: Response) => {
-    try {
-      const logsDir = path.join(process.cwd(), 'logs', 'pipeline');
-      
-      if (!fs.existsSync(logsDir)) {
-        res.json({ logs: [] });
-        return;
-      }
-      
-      const files = fs.readdirSync(logsDir)
-        .filter(f => f.endsWith('.log'))
-        .map(f => {
-          const stats = fs.statSync(path.join(logsDir, f));
-          return {
-            name: f.replace('.log', ''),
-            size: stats.size,
-            modified: stats.mtime.toISOString(),
-          };
-        });
-      
-      res.json({ logs: files, timestamp: getISTTimestamp() });
-    } catch (error) {
-      logger.error('Failed to list logs', { error });
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -937,115 +1047,6 @@ export function createServer(): Express {
       });
     } catch (error) {
       logger.error('Failed to get detailed messages', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // Read any log file (not just pipeline)
-  app.get('/api/logs/file/:filename', apiAuth, (req: Request, res: Response) => {
-    try {
-      const filename = req.params.filename as string;
-      const lines = parseInt(req.query.lines as string) || 100;
-      
-      // Security: only allow specific log files
-      const allowedFiles = [
-        'rmd.log', 'error.log', 'exceptions.log', 'rejections.log',
-        'evolution.log', 'webapp.log'
-      ];
-      
-      if (!allowedFiles.includes(filename)) {
-        res.status(400).json({ error: 'Invalid log file', allowedFiles });
-        return;
-      }
-      
-      const logPath = path.join(process.cwd(), 'logs', filename);
-      
-      if (!fs.existsSync(logPath)) {
-        res.json({ filename, entries: [], message: 'Log file not found or empty' });
-        return;
-      }
-      
-      const content = fs.readFileSync(logPath, 'utf-8');
-      const allLines = content.split('\n').filter(Boolean);
-      const entries = allLines.slice(-lines); // Get last N lines
-      
-      res.json({
-        filename,
-        entries,
-        totalLines: allLines.length,
-        count: entries.length,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to read log file', { error, filename: req.params.filename });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // List all log files (both pipeline and root)
-  app.get('/api/logs/all', apiAuth, (_req: Request, res: Response) => {
-    try {
-      const logsDir = path.join(process.cwd(), 'logs');
-      const pipelineDir = path.join(logsDir, 'pipeline');
-      const dataLogsDir = path.join(process.cwd(), 'data', 'logs');
-      
-      const result: { name: string; path: string; size: number; modified: string }[] = [];
-      
-      // Root log files
-      if (fs.existsSync(logsDir)) {
-        const rootFiles = fs.readdirSync(logsDir)
-          .filter(f => f.endsWith('.log'))
-          .map(f => {
-            const stats = fs.statSync(path.join(logsDir, f));
-            return {
-              name: f,
-              path: `logs/${f}`,
-              size: stats.size,
-              modified: stats.mtime.toISOString(),
-            };
-          });
-        result.push(...rootFiles);
-      }
-      
-      // Pipeline log files
-      if (fs.existsSync(pipelineDir)) {
-        const pipelineFiles = fs.readdirSync(pipelineDir)
-          .filter(f => f.endsWith('.log'))
-          .map(f => {
-            const stats = fs.statSync(path.join(pipelineDir, f));
-            return {
-              name: `pipeline/${f}`,
-              path: `logs/pipeline/${f}`,
-              size: stats.size,
-              modified: stats.mtime.toISOString(),
-            };
-          });
-        result.push(...pipelineFiles);
-      }
-      
-      // Data logs
-      if (fs.existsSync(dataLogsDir)) {
-        const dataFiles = fs.readdirSync(dataLogsDir)
-          .filter(f => f.endsWith('.log'))
-          .map(f => {
-            const stats = fs.statSync(path.join(dataLogsDir, f));
-            return {
-              name: `data/${f}`,
-              path: `data/logs/${f}`,
-              size: stats.size,
-              modified: stats.mtime.toISOString(),
-            };
-          });
-        result.push(...dataFiles);
-      }
-      
-      res.json({ 
-        logs: result,
-        count: result.length,
-        timestamp: getISTTimestamp() 
-      });
-    } catch (error) {
-      logger.error('Failed to list all logs', { error });
       res.status(500).json({ error: 'Internal server error' });
     }
   });

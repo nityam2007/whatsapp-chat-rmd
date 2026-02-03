@@ -200,9 +200,12 @@ async function loadEvents(page = 0) {
         <td><span class="badge badge-${e.status}">${e.status}</span></td>
         <td class="num">${Math.round((e.confidence || 0) * 100)}%</td>
         <td>
-          ${e.status === 'pending' || e.status === 'pending_confirmation' ? `
+          ${e.status === 'pending' || e.status === 'pending_confirmation' || e.status === 'soft' ? `
             <button class="btn btn-sm btn-success" onclick="handleEventAction('${e.id}','accept')">Accept</button>
             <button class="btn btn-sm btn-danger" onclick="handleEventAction('${e.id}','decline')">Decline</button>
+          ` : ''}
+          ${e.status === 'active' ? `
+            <button class="btn btn-sm btn-success" onclick="handleEventAction('${e.id}','complete')">Complete</button>
           ` : ''}
           <button class="btn btn-sm btn-outline" onclick="viewEventDetail('${e.id}')">View</button>
         </td>

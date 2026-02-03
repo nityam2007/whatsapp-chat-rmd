@@ -68,6 +68,10 @@ const SIGNAL_KEYWORDS = {
     // Casual time expressions
     'half past', 'quarter past', 'quarter to', 'ish', 'esque',
     'whenever', 'whenevr', 'sometime', 'someday', 'anytime',
+    // Implicit time contexts (reminders)
+    'on your way', 'on the way', 'when you come', 'when coming', 'while coming',
+    'before coming', 'after coming', 'way back', 'way home', 'going home',
+    'coming home', 'reaching home', 'reach home', 'get home', 'getting home',
     // Hindi/Hinglish time words
     'kal', 'aaj', 'abhi', 'baad', 'baad mein', 'shaam', 'subah', 'raat', 'dopahar',
     'parso', 'parson', 'narsoon', // day after tomorrow, day after that
@@ -348,6 +352,12 @@ const STRONG_PATTERNS = [
   /(pay|transfer)\s+(the|my|for|\d)/i,                            // pay the bill
   /\bpick\s*(me|you|him|her|them|us)\s*up\b/i,                    // pick me up
   
+  // Implicit time/location reminders (errand patterns)
+  /(bring|get|buy|pick\s*up)\s+\w+.*(way|home|coming|back)/i,    // bring potatoes on way home
+  /(on\s+(your|the)\s+way).*(bring|get|buy|pick)/i,              // on your way get milk
+  /while\s+(coming|going).*(bring|get|buy|pick|take)/i,          // while coming bring
+  /(when|before|after)\s+(you\s+)?(come|reach|get\s+home)/i,     // when you come home
+  
   // Hindi/Hinglish patterns
   /\b(kal|aaj|abhi)\s+(ko|tak|mein)?\b/i,                         // kal ko, aaj
   /\byaad\s+(se|rakh|rakhna|dilana|karwa)\b/i,                    // yaad rakh
@@ -627,6 +637,7 @@ function checkHeuristicGateInternal(content: string): HeuristicResult {
   
   // IMPORTANT: Require at least a time/date reference for short messages
   // Messages without specific time/date are not schedulable events
+  // EXCEPTION: Action + Item + implicit context (like "on your way") is valid
   const hasTimeReference = foundSignals.some(s => 
     s.startsWith('time:') || 
     s.startsWith('strong_pattern:') ||
@@ -634,11 +645,21 @@ function checkHeuristicGateInternal(content: string): HeuristicResult {
     s.includes('kal') || 
     s.includes('aaj') ||
     s.includes('tomorrow') ||
-    s.includes('today')
+    s.includes('today') ||
+    // Implicit time contexts for reminders
+    s.includes('way') ||
+    s.includes('home') ||
+    s.includes('coming')
   );
   
+  // Check if it's an action + item combo (valid reminder pattern)
+  const hasAction = categoriesHit.has('action');
+  const hasItem = categoriesHit.has('items') || /\b(milk|bread|potato|potate|vegetable|groceries?|medicine|meds)\b/i.test(normalizedContent);
+  const isActionItemReminder = hasAction && hasItem;
+  
   // Short messages (under 30 chars) without time reference are likely casual
-  if (normalizedContent.length < 30 && !hasTimeReference && score < 5) {
+  // UNLESS it's an action+item reminder
+  if (normalizedContent.length < 30 && !hasTimeReference && !isActionItemReminder && score < 5) {
     score = Math.max(0, score - 2);
   }
 

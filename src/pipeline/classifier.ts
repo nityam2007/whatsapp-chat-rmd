@@ -20,47 +20,46 @@ import { storeLLMCall } from '../database/sqlite.js';
 import { logLLM, logError, logSuccess, logWarn } from '../utils/loudLogger.js';
 import { getFewShotExamples, initSemanticSearch } from '../vector/semanticSearch.js';
 
-const CLASSIFICATION_PROMPT = `You are a STRICT message classifier for a reminder/calendar system. Your job is to identify messages that describe SCHEDULABLE events.
+const CLASSIFICATION_PROMPT = `You are a message classifier for a reminder/calendar system. Your job is to identify messages that describe SCHEDULABLE events or reminders.
 
 IMPORTANT RULES:
-1. A message is ONLY an event if it has a SPECIFIC time, date, or deadline
-2. Vague requests without time ("send email", "pay amount") are NOT events - they are just tasks
+1. A message is an event if it has a SPECIFIC time, date, deadline, OR describes a task to do
+2. REMINDERS with implicit timing are valid events (e.g., "bring milk on your way home")
 3. Acknowledgments ("Done", "Ok", "Ha bhai") are ALWAYS irrelevant
-4. Casual conversation about work/money without scheduling is irrelevant
-5. Be CONSERVATIVE - when in doubt, classify as irrelevant
+4. Pure casual conversation about work/money without any action/task is irrelevant
+5. Requests with ACTION + ITEM are valid reminders (e.g., "bring potatoes", "get milk")
 
 Categories:
-- new_event: Message has a SPECIFIC date/time/deadline (e.g., "meeting tomorrow at 3pm", "deadline Feb 8", "call me at 5")
+- new_event: Message has a specific date/time/deadline OR describes a task/reminder with implicit context
+  Examples: "meeting tomorrow at 3pm", "deadline Feb 8", "bring milk on your way home", "pick up groceries"
 - update_event: Updates an existing event's time/date (e.g., "make it 5pm instead", "postponed to tomorrow")
 - signal_event: Completion trigger with clear context (e.g., "meeting is done, start the next task")
-- irrelevant: Everything else - casual chat, acknowledgments, vague requests, general discussion
+- irrelevant: Pure acknowledgments, casual chat, vague questions without any action
 
-Examples of new_event (HAS specific time/date):
-- "Meeting tomorrow at 3pm" → new_event
-- "Deadline is February 8" → new_event  
-- "Call me at 5 baje" → new_event
-- "Kal 10 baje milte hai" → new_event
+Examples of new_event:
+- "Meeting tomorrow at 3pm" → new_event (specific time)
+- "Deadline is February 8" → new_event (specific date)
+- "Call me at 5 baje" → new_event (specific time)
+- "Bring potatoes on your way home" → new_event (action + item + implicit time)
+- "Pick up milk from store" → new_event (action + item)
+- "Get groceries" → new_event (action + item, reminder)
+- "Kal 10 baje milte hai" → new_event (specific time)
+- "Remind me to call mom" → new_event (reminder request)
 
-Examples of irrelevant (NO specific time/date):
+Examples of irrelevant:
 - "Done" → irrelevant (just acknowledgment)
-- "Ok kale payment thai jase" → irrelevant (vague, no specific time)
-- "Email mokal" → irrelevant (no time specified)
-- "5 month nu kari de" → irrelevant (duration, not a specific date/time)
-- "Payment ketlu thase?" → irrelevant (question about amount)
+- "Ok kale payment thai jase" → irrelevant (status update, not a request)
 - "Ha bhai" → irrelevant (acknowledgment)
 - "Theek che" → irrelevant (acknowledgment)
+- "Payment ketlu thase?" → irrelevant (question, no action)
+- "What happened?" → irrelevant (question, no action)
 
 Examples of update_event:
 - "Actually 5pm nahi 6pm" → update_event
 - "Postponed to next week" → update_event
 - "Changed to Monday" → update_event
 
-Examples of signal_event (RARE - needs clear trigger context):
-- "I've arrived at office, start the backup" → signal_event
-- "Meeting finished, send the notes" → signal_event
-
-Respond with ONLY a JSON object: {"event_type": "category", "confidence": 0.0}
-`;
+Respond with ONLY a JSON object: {"event_type": "category", "confidence": 0.0}`;
 
 // Dynamic prompt with few-shot examples
 function buildClassificationPrompt(content: string, fewShotExamples?: Array<{ message: string; classification: string; similarity: number }>): string {
@@ -350,7 +349,7 @@ function parseClassificationResponse(response: string): ClassificationResult {
 /**
  * Fallback classification when LLM is unavailable
  * Uses comprehensive keyword-based heuristics
- * NOW MORE CONSERVATIVE - requires specific time/date for events
+ * Recognizes both time-based events AND action+item reminders
  */
 function fallbackClassification(content: string): ClassificationResult {
   logWarn('CLASSIFIER', 'Using fallback (keyword-based) classification', { content: content.slice(0, 50) });
@@ -391,7 +390,7 @@ function fallbackClassification(content: string): ClassificationResult {
     return { event_type: 'update_event', confidence: 0.65 };
   }
 
-  // Time patterns (regex) - REQUIRED for event classification
+  // Time patterns (regex) - high confidence events
   const specificTimePatterns = [
     /\d{1,2}[:\.\-]\d{2}\s*(am|pm)?/i,           // 10:30, 10.30 AM
     /\d{1,2}\s*(am|pm|a\.m|p\.m)/i,              // 10am, 10 pm
@@ -408,7 +407,7 @@ function fallbackClassification(content: string): ClassificationResult {
   
   const hasSpecificTime = specificTimePatterns.some(p => p.test(lower));
   
-  // Event keywords need to be paired with time for new_event
+  // Event keywords with time = high confidence
   const eventKeywords = [
     'meeting', 'call', 'appointment', 'deadline', 'due',
     'remind', 'reminder', 'schedule',
@@ -416,17 +415,56 @@ function fallbackClassification(content: string): ClassificationResult {
   
   const hasEventKeyword = eventKeywords.some(k => lower.includes(k));
 
-  // ONLY classify as new_event if there's a SPECIFIC time/date
+  // SPECIFIC TIME = new_event
   if (hasSpecificTime) {
     if (hasEventKeyword) {
       return { event_type: 'new_event', confidence: 0.75 };
     }
-    // Has time but no event word - could be update or new
     return { event_type: 'new_event', confidence: 0.55 };
   }
   
-  // Has event keyword but NO specific time - NOT an event (just a vague request)
-  // This is the key change - we don't create events for vague requests
+  // ACTION + ITEM patterns (reminders without specific time)
+  const actionWords = ['bring', 'get', 'buy', 'pick up', 'pickup', 'collect', 'fetch', 'take', 'grab'];
+  const itemWords = [
+    'milk', 'bread', 'eggs', 'grocery', 'groceries', 'vegetable', 'vegetables', 'veggies',
+    'potato', 'potate', 'potatoes', 'fruits', 'fruit', 'medicine', 'meds', 'tablet',
+    'clothes', 'laundry', 'documents', 'papers', 'keys', 'wallet', 'charger',
+    'gift', 'flowers', 'cake', 'ticket', 'tickets', 'water', 'paani', 'doodh', 'sabzi',
+  ];
+  
+  const hasAction = actionWords.some(w => lower.includes(w));
+  const hasItem = itemWords.some(w => lower.includes(w));
+  
+  // Implicit time context patterns
+  const implicitTimePatterns = [
+    /on\s+(your|the)\s+way/i,             // on your way
+    /way\s+(back|home)/i,                  // way back, way home
+    /when\s+(you\s+)?(come|coming|reach|get\s+home)/i,  // when you come
+    /while\s+(coming|going)/i,             // while coming
+    /before\s+(coming|leaving)/i,          // before coming
+    /after\s+(coming|reaching)/i,          // after coming
+  ];
+  
+  const hasImplicitTime = implicitTimePatterns.some(p => p.test(lower));
+  
+  // Action + Item with implicit time = definitely a reminder
+  if (hasAction && hasItem) {
+    if (hasImplicitTime) {
+      return { event_type: 'new_event', confidence: 0.80 };
+    }
+    // Action + Item without context is still a valid reminder
+    return { event_type: 'new_event', confidence: 0.65 };
+  }
+  
+  // Just action with implicit time (e.g., "pick me up on your way")
+  if (hasAction && hasImplicitTime) {
+    return { event_type: 'new_event', confidence: 0.60 };
+  }
+  
+  // Reminder keywords
+  if (lower.includes('remind') || lower.includes('don\'t forget') || lower.includes('dont forget')) {
+    return { event_type: 'new_event', confidence: 0.70 };
+  }
 
   return { event_type: 'irrelevant', confidence: 0.7 };
 }
