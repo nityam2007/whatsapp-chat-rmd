@@ -4,13 +4,16 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
+**Current Version**: v0.7.0 | **LLM**: Gemini 3 Flash Preview
+
 ## Quick Start (One Command)
 
 ### Prerequisites
 
 - **Node.js 20+** - [Download](https://nodejs.org)
 - **Docker** - [Download](https://docs.docker.com/get-docker/)
-- **OpenAI API Key** - [Get one](https://platform.openai.com/api-keys)
+- **Gemini API Key** - [Get one](https://aistudio.google.com/apikey) (recommended)
+- **OpenAI API Key** - [Get one](https://platform.openai.com/api-keys) (optional fallback)
 
 ### 1. Clone & Start
 
@@ -19,9 +22,9 @@
 git clone https://github.com/your-username/WHATSAPP-CHAT-RMD.git
 cd WHATSAPP-CHAT-RMD
 
-# Copy environment file and add your OpenAI API key
+# Copy environment file and add your API keys
 cp .env.example .env
-nano .env  # Add your OPENAI_API_KEY
+nano .env  # Add GEMINI_API_KEY (and optionally OPENAI_API_KEY)
 
 # Make scripts executable and start everything
 chmod +x scripts/*.sh
@@ -190,12 +193,35 @@ open http://localhost:8080
 
 ## Environment Variables
 
+### Required (choose one)
+
+| Variable | Description |
+|----------|-------------|
+| `GEMINI_API_KEY` | Google Gemini API key (recommended) |
+| `OPENAI_API_KEY` | OpenAI API key (fallback) |
+
+### AI Model Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GEMINI_MODEL` | Gemini model to use | `gemini-3-flash-preview` |
+| `GEMINI_API_URL` | Gemini API endpoint | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| `OPENAI_MODEL_SMALL` | Fast classifier model | `gpt-4o-mini` |
+| `OPENAI_MODEL_BIG` | Extraction model | `gpt-4o` |
+
+### Available Gemini Models
+
+| Model | ID | Best For |
+|-------|-----|----------|
+| Gemini 3 Flash | `gemini-3-flash-preview` | Speed + intelligence (recommended) |
+| Gemini 3 Pro | `gemini-3-pro-preview` | Complex tasks, best accuracy |
+| Gemini 2.5 Flash | `gemini-2.5-flash` | Previous generation |
+
+### Other Settings
+
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Argus API port | `3000` |
-| `OPENAI_API_KEY` | OpenAI API key | Required |
-| `OPENAI_MODEL_SMALL` | Fast classifier model | `gpt-4o-mini` |
-| `OPENAI_MODEL_BIG` | Extraction model | `gpt-4o` |
 | `VAPID_PUBLIC_KEY` | Push notification key | Auto-generated |
 | `VAPID_PRIVATE_KEY` | Push notification key | Auto-generated |
 | `LOG_LEVEL` | Logging level | `debug` |

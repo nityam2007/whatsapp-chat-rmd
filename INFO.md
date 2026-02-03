@@ -6,7 +6,7 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.5.0 (Auto-Learning System)
+**Current Version**: v0.7.0 (Gemini 3 Flash + Improved Dashboard)
 
 ---
 
@@ -17,6 +17,8 @@
 - Auto-Learning System that improves over time
 - Real-time metrics and monitoring
 - Push notifications for reminders
+- Gemini 3 Flash Preview for intelligent extraction
+- Professional webapp dashboard with metrics
 - Docker-based deployment with health checks
 
 ---
@@ -40,9 +42,11 @@
 
 | Component | Technology | Version | Purpose |
 |-----------|------------|---------|---------|
-| LLM Provider | OpenAI API | SDK 4.96.x | GPT models for extraction |
+| Primary LLM | Gemini 3 Flash Preview | Latest | Fast + intelligent extraction |
+| Alternative LLM | Gemini 3 Pro Preview | Latest | Complex extraction tasks |
+| Fallback Provider | OpenAI API | SDK 4.96.x | GPT models backup |
 | Classifier Model | GPT-4o-mini | Latest | Fast event classification |
-| Extractor Model | GPT-4o | Latest | Detailed data extraction |
+| Extractor Model | Gemini 3 Flash | Latest | Detailed data extraction |
 | Embedding Model | text-embedding-3-small | Latest | Vector embeddings |
 | Token Counting | tiktoken | 1.x | Accurate token estimation |
 | Token Compression | quicksave | - | Context compression |
@@ -383,6 +387,10 @@ WHATSAPP-CHAT-RMD/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `GEMINI_API_KEY` | - | Google Gemini API key (primary) |
+| `GEMINI_MODEL` | `gemini-3-flash-preview` | Gemini model for extraction |
+| `GEMINI_API_URL` | `https://generativelanguage.googleapis.com/v1beta/openai` | Gemini API endpoint |
+| `OPENAI_API_KEY` | - | OpenAI API key (fallback) |
 | `OPENAI_MODEL_SMALL` | `gpt-4o-mini` | Fast classifier model |
 | `OPENAI_MODEL_BIG` | `gpt-4o` | Detailed extractor model |
 | `TOKEN_THRESHOLD` | `2000` | Compression trigger threshold |
@@ -544,7 +552,9 @@ npm test -- --watch
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v0.5.0 | Current | Auto-Learning System, 237 tests |
+| v0.7.0 | Current | Gemini 3 Flash, Improved Dashboard, Metrics Page |
+| v0.6.0 | - | Pending Confirmation, Contextual Triggers |
+| v0.5.0 | - | Auto-Learning System, 237 tests |
 | v0.4.1 | - | Metrics system (51 tests) |
 | v0.4.0 | - | Rule engine, Regional languages (77 tests) |
 | v0.3.0 | - | Startup scripts, Push webapp |

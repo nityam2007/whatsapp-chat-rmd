@@ -1,5 +1,40 @@
 # Argus - Project Rules
 
+## CRITICAL: AI Assistant Rules (READ FIRST)
+
+These rules MUST be followed by AI assistants working on this project:
+
+### Mandatory Workflow
+1. **ALWAYS update CHANGELOG.md** - Before ANY commit, add entry at TOP
+2. **ALWAYS run tests** - After code changes: `npm test`
+3. **ALWAYS commit and push** - Never leave uncommitted work
+4. **ALWAYS update docs** - INFO.md, RULES.md when making changes
+
+### Quick Reference
+```bash
+# After making changes:
+npm test                    # Run tests (must pass)
+# Update CHANGELOG.md       # Add entry at TOP
+git add -A && git commit -m "type(scope): description"
+git push origin main
+```
+
+### Documentation Updates Required
+| Change Type | Update These Files |
+|-------------|-------------------|
+| New feature | CHANGELOG.md, INFO.md |
+| Bug fix | CHANGELOG.md |
+| Config change | CHANGELOG.md, README.md (if user-facing) |
+| New rule/learning | CHANGELOG.md, RULES.md |
+| Version bump | CHANGELOG.md, INFO.md, src/server.ts banner |
+
+### Version Info
+- **Current Version**: v0.7.0
+- **LLM Model**: Gemini 3 Flash Preview (`gemini-3-flash-preview`)
+- **Tests**: 237 passing
+
+---
+
 ## Core Principles
 
 1. **Deterministic Execution** - No guessing, no invention, no assumptions
@@ -21,7 +56,7 @@
 ### Code Generation
 - AI MUST use latest stable versions of libraries
 - AI MUST validate generated code against project patterns
-- AI SHOULD run tests after code changes
+- AI MUST run tests after code changes
 - AI MUST update documentation files on structural changes
 
 ---

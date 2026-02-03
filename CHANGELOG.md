@@ -5,6 +5,37 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.7.1] - 2026-02-03
+
+### Changed - Documentation Update
+
+#### Updated Documentation
+- **RULES.md** - Added critical AI assistant rules section at top
+  - Mandatory workflow: update CHANGELOG, run tests, commit/push
+  - Quick reference commands
+  - Documentation update requirements table
+  - Version info (v0.7.0, Gemini 3 Flash)
+- **INFO.md** - Updated to v0.7.0
+  - Added Gemini 3 as primary LLM
+  - Updated tech stack with Gemini models
+  - Added Gemini environment variables
+  - Updated version history
+- **README.md** - Added Gemini configuration
+  - Prerequisites now mention Gemini API key
+  - New "AI Model Configuration" section
+  - Available Gemini models table
+  - Updated environment variables
+
+#### Files Modified
+```
+RULES.md      # Added AI assistant rules section
+INFO.md       # Updated to v0.7.0, Gemini 3
+README.md     # Added Gemini config
+CHANGELOG.md  # This entry
+```
+
+---
+
 ## [0.7.0] - 2026-02-03
 
 ### Changed - Gemini 3 Flash Preview + Improved Dashboard
