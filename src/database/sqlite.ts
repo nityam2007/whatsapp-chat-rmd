@@ -88,7 +88,12 @@ export function initDatabase(): Database.Database {
   logger.info('Initializing database', { path: config.databasePath });
 
   dbInstance = new Database(config.databasePath);
-  dbInstance.pragma('journal_mode = WAL');
+  
+  // Database durability settings
+  dbInstance.pragma('journal_mode = WAL');        // Write-Ahead Logging for better concurrency
+  dbInstance.pragma('synchronous = NORMAL');      // Good balance of speed and durability
+  dbInstance.pragma('busy_timeout = 5000');       // Wait up to 5s if database is locked
+  dbInstance.pragma('cache_size = -64000');       // 64MB cache for better performance
 
   // Run migrations
   runMigrations(dbInstance);
