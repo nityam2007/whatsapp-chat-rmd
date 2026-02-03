@@ -7,11 +7,12 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ## [0.7.0] - 2026-02-03
 
-### Changed - Gemini 2.5 Flash + Improved Dashboard
+### Changed - Gemini 3 Flash Preview + Improved Dashboard
 
 #### LLM Update
-- **Upgraded to Gemini 2.5 Flash** (`gemini-2.5-flash`) for classification and extraction
-- Gemini 2.5 Flash offers improved performance and accuracy over 2.0
+- **Upgraded to Gemini 3 Flash Preview** (`gemini-3-flash-preview`) for classification and extraction
+- Gemini 3 Flash offers best speed + intelligence balance (latest model)
+- Also supports `gemini-3-pro-preview` for most powerful extraction
 
 #### Improved Webapp Dashboard
 Complete redesign of the webapp with a professional, clean UI:
@@ -36,10 +37,11 @@ Complete redesign of the webapp with a professional, clean UI:
 
 #### Files Modified
 ```
-.env                           # Updated GEMINI_MODEL to gemini-2.5-flash
-webapp/public/index.html       # Complete redesign - professional UI
+.env                           # Updated GEMINI_MODEL to gemini-3-flash-preview
+webapp/public/index.html       # Complete redesign - professional UI, fixed metrics
 webapp/server.ts               # Added snooze and metrics proxy endpoints
 src/server.ts                  # Updated version and banner
+RULES.md                       # Added Gemini 3 model documentation
 ```
 
 ---

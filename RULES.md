@@ -74,6 +74,23 @@
 
 ## LLM Usage Rules
 
+### Gemini 3 Models (Primary - via OpenAI-compatible API)
+| Model | ID | Use Case |
+|-------|-----|----------|
+| Gemini 3 Flash Preview | `gemini-3-flash-preview` | Speed + intelligence (recommended) |
+| Gemini 3 Pro Preview | `gemini-3-pro-preview` | Most powerful, best for complex tasks |
+
+Configuration via `.env`:
+```bash
+GEMINI_MODEL=gemini-3-flash-preview  # or gemini-3-pro-preview
+```
+
+### Fallback Models (OpenAI)
+| Model | Purpose |
+|-------|---------|
+| `gpt-4o-mini` | Classification (efficient) |
+| `gpt-4o` | Extraction (capable) |
+
 ### Small LLM (Classification Only)
 - Model: `gpt-4o-mini` (latest efficient model)
 - Purpose: Event type classification

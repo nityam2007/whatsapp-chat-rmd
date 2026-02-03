@@ -788,7 +788,7 @@ export function startServer(): void {
     console.log(`
 +=====================================================================+
 |                         Argus v0.7.0                                |
-|                  (Gemini 2.5 Flash + Auto-Learning)                 |
+|                  (Gemini 3 Flash + Auto-Learning)                   |
 +=====================================================================+
 |  Server: http://localhost:${String(config.port).padEnd(5)}                                  |
 |  Environment: ${config.nodeEnv.padEnd(52)}|

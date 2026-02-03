@@ -1224,27 +1224,28 @@
         const summary = data.summary;
         
         document.getElementById('metric-processed').textContent = summary?.messagesProcessed || 0;
-        document.getElementById('metric-heuristic').textContent = `${summary?.heuristicPassRate || 0}%`;
-        document.getElementById('metric-rule').textContent = `${summary?.ruleEngineHitRate || 0}%`;
-        document.getElementById('metric-llm').textContent = `${summary?.llmSkipRate || 0}%`;
+        // API returns heuristicDropRate, so pass rate = 100 - drop rate
+        const dropRate = parseInt(summary?.heuristicDropRate?.replace('%', '') || '0');
+        document.getElementById('metric-heuristic').textContent = `${100 - dropRate}%`;
+        document.getElementById('metric-rule').textContent = summary?.ruleEngineHitRate || '0%';
+        document.getElementById('metric-llm').textContent = summary?.llmSkipRate || '0%';
         
         // Detailed metrics
         const detailEl = document.getElementById('metrics-detail');
         if (summary) {
           const rows = [
-            ['Messages Received', summary.messagesReceived],
-            ['Messages Dropped', summary.messagesDropped],
-            ['Heuristic Passed', summary.heuristicPassed],
-            ['Rule Engine Extractions', summary.ruleEngineExtractions],
-            ['LLM Extractions', summary.llmExtractions],
-            ['LLM Skipped', summary.llmSkipped],
+            ['Uptime (hours)', summary.uptimeHours],
+            ['Messages Processed', summary.messagesProcessed],
+            ['Heuristic Drop Rate', summary.heuristicDropRate],
+            ['Rule Engine Hit Rate', summary.ruleEngineHitRate],
+            ['LLM Skip Rate', summary.llmSkipRate],
+            ['Avg Latency (ms)', summary.avgLatencyMs],
             ['Events Created', summary.eventsCreated],
-            ['Events Updated', summary.eventsUpdated],
             ['Errors', summary.errors],
           ];
           
           detailEl.innerHTML = rows
-            .filter(([_, v]) => v !== undefined)
+            .filter(([_, v]) => v !== undefined && v !== null)
             .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`)
             .join('');
         }
