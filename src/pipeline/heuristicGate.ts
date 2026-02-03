@@ -214,7 +214,7 @@ const SIGNAL_KEYWORDS = {
 
   // Common items for errands
   items: [
-    'milk', 'bread', 'eggs', 'grocery', 'groceries', 'vegetables', 'veggies', 'fruits',
+    'milk', 'bread', 'eggs', 'grocery', 'groceries', 'vegetable', 'vegetables', 'veggies', 'veggie', 'fruits', 'fruit',
     'medicine', 'meds', 'prescription', 'tablets', 'pills',
     'clothes', 'laundry', 'dry cleaning', 'ironing',
     'documents', 'papers', 'files', 'passport', 'license', 'id',
