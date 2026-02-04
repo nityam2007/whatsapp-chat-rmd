@@ -1,0 +1,157 @@
+---
+title: Argus v1.0.0 - Simplified Vector-First Memory
+---
+flowchart TB
+    %% ============================================
+    %% SIMPLIFIED ARCHITECTURE
+    %% - Single vector store for ALL data
+    %% - Leverage Gemini 1M context (no compression)
+    %% - Auto-archive >90 days to ZIP
+    %% - Minimal complexity, fast to build
+    %% ============================================
+
+    %% === INPUT SOURCES ===
+    subgraph Inputs["📥 INPUT SOURCES"]
+        direction LR
+        PHONE["📱 Phone<br/>WhatsApp App"]
+        BROWSER["🌐 Browser<br/>Chrome"]
+    end
+
+    %% === WHATSAPP INTEGRATION ===
+    subgraph Evolution["🔌 EVOLUTION API (Port 8080)"]
+        direction TB
+        WACLOUD["WhatsApp Cloud"]
+        BAILEYS["Baileys Library<br/>WhatsApp Web Protocol"]
+        EVO_PG[("PostgreSQL<br/>Internal Storage")]
+        EVO_WH["Webhook Out<br/>POST to Argus"]
+        
+        WACLOUD <--> BAILEYS
+        BAILEYS --> EVO_PG
+        BAILEYS --> EVO_WH
+    end
+
+    %% === CHROME EXTENSION ===
+    subgraph Chrome["🧩 CHROME EXTENSION (Manifest V3)"]
+        direction TB
+        
+        subgraph Detectors["Site Detectors"]
+            TRAVEL["✈️ Travel<br/>MakeMyTrip, Booking"]
+            SHOP["🛒 Shopping<br/>Amazon, Flipkart"]
+        end
+        EXT_API["Extension API Calls<br/>POST to Argus"]
+        
+        TRAVEL --> BG
+        SHOP --> BG
+        BG --> EXT_API
+        EXT_API -.P["Popup UI"]
+        
+        TRAVEL --> BG
+        SHOP --> BG
+        BG --> CONTENT
+    end
+
+    %% === ARGUS CORE ===
+    subgraph Argus["⚡ ARGUS SERVICE (Port 3000)"]
+        direction TB
+        
+        %% Simple Pipeline
+        subgraph Pipeline["💾 SIMPLE PIPELINE"]
+            direction TB
+            WH_RECV["POST /webhook"]
+            DEDUP["Dedup Check"]
+            STORE["Store All"]
+            EMBED["Generate Embedding<br/>OpenAI API"]
+            ARCHIVE["Auto-Archive<br/>>90 days"]
+        end
+        
+        %% Unified Storage
+        subgraph Storage["💾 UNIFIED STORAGE"]
+            direction LR
+            SQLITE[("SQLite<br/>WhatsApp messages ONLY<br/>Contact metadata<br/>Last 90 days")]
+            FAISS[("FAISS Index<br/>Message embeddings<br/>Semantic search")]
+            ARCHIVES[("Archives<br/>YYYY-MM.zip<br/>>90 days old")]
+        end
+        
+        %% Proactive Engine
+        subgraph Proactive["🔔 PROACTIVE ENGINE"]
+            direction TB
+            TRIGGER["Trigger Sources:<br/>1. Chrome URL change<br/>2. Chrome DOM context (travel/shop)"]
+            SEARCH["FAISS Search<br/>Query: URL + context<br/>Search: WhatsApp messages<br/>top-K=30, similarity>0.65"]
+            GEMINI_ALL["Gemini 1M Context<br/>Input: Query + top-30 messages<br/>Output: Relevant reminder + action<br/>Confidence threshold: 80%"]
+        end
+        
+        %% Simple API
+        API["🌐 Simple API<br/>POST /context<br/>GET /search"]
+    end
+
+    %% === WEBAPP ===
+    WEBAPP["🖥️ Dashboard (Port 3002)"]
+
+    %% === NOTIFICATIONS ===
+    NOTIFY["🔔 Web Push"]
+
+    %% === EXTERNATB
+        OPENAI["OpenAI API<br/>text-embedding-3-small<br/>1536 dimensions"]
+        GEMINI["Gemini Flash API<br/>1M context window<br/>Validation + Extraction
+        OPENAI["OpenAI<br/>Embeddings"]
+        GEMINI["Gemini Flash<br/>1M context"]
+    end
+
+    %% ============================================
+    %% CONNECTIONS - SIMPLE FLOW
+    %% ============================================
+    PHONE <--> WACLOUD
+    EVO_WH -->|"webhook POST"| WH_RECV
+    WH_RECV --> DEDUP
+    DEDUP --> STORE
+    
+    %% Storage
+    STORE --> SQLITE
+    STORE --> EMBED
+    EMBED <--> OPENAI
+    EMBED --> FAISS
+    
+    %% Archive
+    ARCHIVE --> SQLITE
+    ARCHIVE --> ARCHIVES
+    
+    %% Proactive
+    STORE --> TRIGGER
+    TRIGGER --> SEARCH
+    SEARCH --> FAISS
+    SEARCH --> GEMINI_ALL
+    GEMINI_ALL <--> GEMINI
+    GEMINI_ALL --> NOTIFY
+    
+    %% Chrome Extension
+    BROWSER --> URL_MATCH
+    BROWSER --> TRAVEL
+    BROWSER --> SHOP
+    EXT_API -->|"URL or context"| API
+    API --> TRIGGER
+    
+    %% Notifications
+    NOTIFY -.->|"push"| CONTENT
+    
+    %% Webapp
+    WEBAPP --> API
+
+    %% ============================================
+    %% STYLING
+    %% ============================================
+    classDef input fill:#25D366,color:#fff,stroke:#1a8f4a,stroke-width:3px
+    classDef evolution fill:#6366f1,color:#fff,stroke:#4f46e5,stroke-width:2px
+    classDef chrome fill:#ff6b6b,color:#fff,stroke:#e74c3c,stroke-width:2px
+    classDef pipeline fill:#f59e0b,color:#fff,stroke:#d97706,stroke-width:2px
+    classDef storage fill:#0ea5e9,color:#fff,stroke:#0284c7,stroke-width:2px
+    classDef proactive fill:#8b5cf6,color:#fff,stroke:#7c3aed,stroke-width:2px
+    classDef external fill:#10a37f,color:#fff,stroke:#0d8a6a,stroke-width:2px
+
+    class PHONE,BROWSER input
+    class WACLOUD,BAILEYS evolution
+    class TRAVEL,SHOP,BG,CONTENT,POPUP chrome
+    class WH_RECV,DEDUP,S,EVO_PG,EVO_WH evolution
+    class TRAVEL,SHOP,BG,CONTENT,POPUP,EXT_APIe
+    class TRIGGER,SEARCH,GEMINI_ALL proactive
+    class OPENAI,GEMINI external
+    class NOTIFY,WEBAPP pipeline
