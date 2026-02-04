@@ -19,7 +19,7 @@ sequenceDiagram
     WebApp-->>Browser: Subscribed
 
     Note over ARGUS,Scheduler: When Event is Detected
-    ARGUS->>ARGUS: Extract Event from Message
+    ARGUS->>ARGUS: Gemini Extract + Store Event
     ARGUS->>Scheduler: Schedule Reminder
     
     Note over Scheduler,Browser: When Reminder Time Arrives

@@ -1,15 +1,14 @@
 /**
- * Proactive Trigger Service (v0.9.0 Simplified)
+ * Proactive Trigger Service (v1.0.0)
  * 
  * Monitors ALL incoming messages and uses intelligent matching to detect
  * when any message relates to pending events/tasks.
  * 
- * MATCHING STRATEGY (v0.9.0 - Simplified 2-Stage):
- * 1. SQL Context Query (fast, cheap) - uses location, keywords, context tags
- * 2. Gemini LLM (smart, expensive) - only for ambiguous cases or validation
+ * MATCHING STRATEGY (v1.0.0 - Simplified 2-Stage):
+ * 1. FAISS search (fast) - top-K semantic candidates
+ * 2. Gemini LLM (smart, expensive) - validation and action extraction
  * 
- * REMOVED: FAISS vector similarity (was overkill for proactive matching)
- * ADDED: SQL-based context matching with 3-month hot data window
+ * Uses FAISS-backed semantic search with 3-month hot data window
  * 
  * This is intelligent context understanding, not just keyword matching.
  * 
@@ -27,14 +26,12 @@ import {
   markEventProactivelyTriggered,
   resetProactiveTrigger as dbResetProactiveTrigger,
   storePipelineLog,
-  getEventsByContext,
-  ExtensionContextQuery,
-  ContextMatchResult,
 } from '../database/sqlite.js';
 import { sendNotification } from '../notifications/index.js';
 import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
 import OpenAI from 'openai';
+import { getVectorStore, generateEmbedding } from '../vector/faiss.js';
 
 // Gemini client
 let geminiClient: OpenAI | null = null;
@@ -52,20 +49,20 @@ function getGeminiClient(): OpenAI {
 export interface ProactiveMatch {
   event: StoredEvent;
   matchReason: string;
-  matchType: 'sql_context' | 'intelligent' | 'keyword';
+  matchType: 'faiss' | 'intelligent' | 'keyword';
   confidence: number;
   suggestedAction?: string;
 }
 
-// Confidence thresholds (simplified in v0.9.0)
-const SQL_HIGH_CONFIDENCE_THRESHOLD = 0.80;  // High enough to trigger directly
-const SQL_MEDIUM_CONFIDENCE_THRESHOLD = 0.60; // Worth checking with Gemini
+// Confidence thresholds
+const FAISS_HIGH_CONFIDENCE_THRESHOLD = 0.80;  // High enough to trigger directly
+const FAISS_MEDIUM_CONFIDENCE_THRESHOLD = 0.60; // Worth checking with Gemini
 
 /**
  * Check if an incoming message triggers any pending events
- * Uses SQL context matching first, then Gemini for ambiguous cases
+ * Uses FAISS matching first, then Gemini for ambiguous cases
  * 
- * SIMPLIFIED in v0.9.0: Removed FAISS, uses SQL-based matching
+ * Uses FAISS matching and Gemini validation
  */
 export async function checkForProactiveTriggers(
   message: StoredMessage
@@ -83,30 +80,38 @@ export async function checkForProactiveTriggers(
 
   try {
     // =============================================
-    // Stage 1: SQL Context Matching (Fast & Cheap)
-    // Uses getEventsByContext() with 3-month hot data window
+    // Stage 1: FAISS Semantic Matching (Fast & Cheap)
+    // Uses embeddings + FAISS Top-K over last 3 months
     // =============================================
-    const contextQuery = extractContextFromMessage(message.content);
-    const sqlMatches = getEventsByContext(contextQuery);
+    const queryEmbedding = await generateEmbedding(message.content);
+    const vectorStore = getVectorStore();
+    const results = await vectorStore.search(queryEmbedding, 100);
+    const pendingEvents = getEventsForProactiveTrigger(200);
+    const eventMap = new Map(pendingEvents.map((event) => [event.id, event]));
     
     // Convert to ProactiveMatch format
-    const matches: ProactiveMatch[] = sqlMatches.map(m => ({
-      event: m.event,
-      matchReason: `${m.matchType}: ${m.matchedValue}`,
-      matchType: 'sql_context' as const,
-      confidence: m.confidence,
-      suggestedAction: m.event.title || undefined,
-    }));
+    const matches: ProactiveMatch[] = [];
+    for (const result of results) {
+      if (result.similarity < 0.65) continue;
+      const event = eventMap.get(result.eventId);
+      if (!event) continue;
+      matches.push({
+        event,
+        matchReason: 'faiss',
+        matchType: 'faiss',
+        confidence: result.similarity,
+        suggestedAction: event.title || undefined,
+      });
+    }
     
-    // Log SQL stage
+    // Log FAISS stage
     storePipelineLog({
       message_id: message.id,
-      stage: 'proactive_sql',
+      stage: 'proactive_faiss',
       status: matches.length > 0 ? 'matches_found' : 'no_matches',
       data: {
-        contextQuery,
         matchCount: matches.length,
-        matches: matches.map(m => ({
+        matches: matches.map((m) => ({
           eventId: m.event.id,
           eventTitle: m.event.title,
           confidence: m.confidence,
@@ -115,11 +120,11 @@ export async function checkForProactiveTriggers(
       },
     });
     
-    // High-confidence SQL matches - use directly
-    const highConfidence = matches.filter(m => m.confidence >= SQL_HIGH_CONFIDENCE_THRESHOLD);
+    // High-confidence matches - use directly
+    const highConfidence = matches.filter(m => m.confidence >= FAISS_HIGH_CONFIDENCE_THRESHOLD);
     
     if (highConfidence.length > 0) {
-      logger.info('Using high-confidence SQL matches (skipping Gemini)', {
+      logger.info('Using high-confidence FAISS matches (skipping Gemini)', {
         messageId: message.id,
         matchCount: highConfidence.length,
       });
@@ -133,10 +138,10 @@ export async function checkForProactiveTriggers(
     
     // =============================================
     // Stage 2: Gemini LLM (Smart but Expensive)
-    // Only if SQL found medium-confidence matches OR message looks promising
+    // Only if FAISS found medium-confidence matches OR message looks promising
     // =============================================
     const mediumConfidence = matches.filter(
-      m => m.confidence >= SQL_MEDIUM_CONFIDENCE_THRESHOLD && m.confidence < SQL_HIGH_CONFIDENCE_THRESHOLD
+      m => m.confidence >= FAISS_MEDIUM_CONFIDENCE_THRESHOLD && m.confidence < FAISS_HIGH_CONFIDENCE_THRESHOLD
     );
     
     const mightBeTrigger = checkForTriggerSignals(message.content);
@@ -188,68 +193,6 @@ export async function checkForProactiveTriggers(
     logger.error('Error checking proactive triggers', { error, messageId: message.id });
     return [];
   }
-}
-
-/**
- * Extract context (keywords, location) from message content
- * Used for SQL-based matching
- */
-function extractContextFromMessage(content: string): ExtensionContextQuery {
-  const keywords = extractSignificantWords(content.toLowerCase());
-  
-  // Try to detect location from common patterns
-  const locationPatterns = [
-    /\b(?:reached|arrived|at|in|visiting|landed|going to|heading to|came to)\s+(\w+)/i,
-    /\b(?:goa|mumbai|delhi|bangalore|chennai|kolkata|hyderabad|pune|jaipur|ahmedabad)\b/i,
-  ];
-  
-  let location: string | undefined;
-  for (const pattern of locationPatterns) {
-    const match = content.match(pattern);
-    if (match) {
-      location = match[1] || match[0];
-      break;
-    }
-  }
-  
-  // Detect activity type
-  let activity: string | undefined;
-  if (/\b(travel|trip|flight|hotel|booking|vacation)\b/i.test(content)) {
-    activity = 'travel';
-  } else if (/\b(buy|purchase|order|amazon|flipkart|shopping)\b/i.test(content)) {
-    activity = 'shopping';
-  } else if (/\b(pay|payment|bank|transfer|upi)\b/i.test(content)) {
-    activity = 'banking';
-  }
-  
-  return {
-    keywords: keywords.slice(0, 10), // Limit keywords
-    location,
-    activity,
-  };
-}
-
-/**
- * Extract significant words from text (filter out stop words)
- */
-function extractSignificantWords(text: string): string[] {
-  const stopWords = new Set([
-    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
-    'may', 'might', 'must', 'shall', 'can', 'need', 'to', 'of', 'in', 'for',
-    'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
-    'before', 'after', 'above', 'below', 'between', 'under', 'again',
-    'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how',
-    'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor',
-    'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'just',
-    'don', 'now', 'i', 'me', 'my', 'you', 'your', 'he', 'she', 'it', 'we', 'they',
-    'and', 'but', 'or', 'if', 'because', 'until', 'while', 'about',
-  ]);
-  
-  return text
-    .replace(/[^\w\s]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length >= 3 && !stopWords.has(w));
 }
 
 /**

@@ -16,9 +16,9 @@
 
 import { encoding_for_model, TiktokenModel } from 'tiktoken';
 import OpenAI from 'openai';
-import { MessageContext } from '../types/index.js';
-import { config } from '../config/index.js';
-import logger from '../utils/logger.js';
+import { MessageContext } from '../../types/index.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
 
 // Tiktoken encoder - lazy initialized
 let encoder: ReturnType<typeof encoding_for_model> | null = null;
@@ -124,7 +124,7 @@ async function quicksaveCompress(text: string): Promise<string> {
     const client = getOpenAI();
     
     const response = await client.chat.completions.create({
-      model: config.openaiModelSmall, // Use gpt-4o-mini for compression (cheaper, fast)
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: QUICKSAVE_SYSTEM_PROMPT },
         { role: 'user', content: `Compress this conversation context:\n\n${text}` }
@@ -161,7 +161,7 @@ async function quicksaveCompress(text: string): Promise<string> {
  * - NEVER compress structured JSON
  */
 export async function compressIfNeeded<T extends MessageContext>(context: T): Promise<T> {
-  const threshold = config.tokenThreshold;
+  const threshold = parseInt(process.env.TOKEN_THRESHOLD || '2000', 10);
   const tokenCount = countTokens(
     context.messages.map(m => `[${m.sender}]: ${m.content}`).join('\n')
   );
@@ -219,10 +219,11 @@ export async function compressIfNeeded<T extends MessageContext>(context: T): Pr
  * Checks if content should be compressed
  */
 export function shouldCompress(context: MessageContext): boolean {
+  const threshold = parseInt(process.env.TOKEN_THRESHOLD || '2000', 10);
   const tokenCount = countTokens(
     context.messages.map(m => `[${m.sender}]: ${m.content}`).join('\n')
   );
-  return tokenCount > config.tokenThreshold && context.messages.length > 1;
+  return tokenCount > threshold && context.messages.length > 1;
 }
 
 /**

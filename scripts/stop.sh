@@ -178,11 +178,21 @@ stop_nodejs_services() {
     echo -e "  ${BOLD}Evolution API (port $EVOLUTION_PORT)${NC}"
     kill_port "$EVOLUTION_PORT" "Evolution API"
     
-    # Kill any remaining tsx processes related to this project
+    # Kill any remaining Node/tsx processes related to this project
     pkill -f "tsx.*$PROJECT_DIR" 2>/dev/null || true
     pkill -f "tsx.*src/index.ts" 2>/dev/null || true
     pkill -f "tsx.*webapp/server.ts" 2>/dev/null || true
+    pkill -f "node.*dist/index.js" 2>/dev/null || true
+    pkill -f "node.*dist/webapp/server.js" 2>/dev/null || true
     pkill -f "evolution-api.*npm" 2>/dev/null || true
+    if [ -f "$PROJECT_DIR/.evolution.pid" ]; then
+        local evo_pid
+        evo_pid=$(cat "$PROJECT_DIR/.evolution.pid" 2>/dev/null || echo "")
+        if [ -n "$evo_pid" ] && kill -0 "$evo_pid" 2>/dev/null; then
+            kill "$evo_pid" 2>/dev/null || true
+        fi
+        rm -f "$PROJECT_DIR/.evolution.pid"
+    fi
 }
 
 # ===========================================

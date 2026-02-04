@@ -1,5 +1,5 @@
 ---
-title: Argus v0.9.0 - Proactive Memory System
+title: Argus v1.0.0 - Simplified Vector-First Memory
 ---
 flowchart TB
     %% ============================================
@@ -58,28 +58,23 @@ flowchart TB
         %% Extraction Pipeline
         subgraph Pipeline["📥 EXTRACTION PIPELINE"]
             direction TB
-            GATE["🚪 Heuristic Gate<br/>70+ Keywords<br/>Regional: Tamil, Telugu, Hindi"]
-            CLASS["🏷️ Classifier<br/>Gemini 3"]
-            CONTEXT["📚 Context Builder<br/>Recent msgs + FAISS"]
-            TOKEN{"Tokens > 2000?"}
-            COMPRESS["🗜️ Quicksave<br/>Kanji Compression"]
-            EXTRACT["🤖 Gemini 3<br/>Extract Event"]
-            ROUTER["🔀 Event Router"]
+            GATE["🚪 Heuristic Gate<br/>Keyword signals"]
+            EXTRACT["🤖 Gemini 3<br/>Single-call Extract"]
+            STORE["💾 Store + Embed"]
         end
         
         %% Storage
         subgraph Store["💾 STORAGE LAYER"]
             direction LR
             SQLITE[("SQLite<br/>Events, Messages<br/>Contacts, Logs")]
-            FAISS[("FAISS<br/>Vector Embeddings<br/>Semantic Search")]
+            FAISS[("FAISS Index<br/>Vector Embeddings")]
         end
         
         %% Proactive Engine
         subgraph ProactiveEngine["🔔 PROACTIVE ENGINE"]
             direction TB
             TRIGGER["Trigger Check<br/>ALL messages"]
-            SQL_Q["SQL Query<br/>Location, Keywords<br/>3-month window"]
-            FAISS_Q["FAISS Search<br/>Semantic Similarity"]
+            FAISS_Q["FAISS Search<br/>Top-K=100, similarity>0.65"]
             GEMINI_V["🤖 Gemini 3<br/>Context Validation"]
         end
         
@@ -119,7 +114,7 @@ flowchart TB
     subgraph External["☁️ EXTERNAL SERVICES"]
         direction LR
         OPENAI["OpenAI API<br/>Embeddings"]
-        GEMINI["Gemini API<br/>Gemini 3"]
+        GEMINI["Gemini 3 Flash/Pro API"]
         REDIS[("Redis<br/>Session Cache")]
     end
 
@@ -134,28 +129,17 @@ flowchart TB
     
     %% Extraction Pipeline Flow
     DEDUP --> GATE
-    GATE -->|"signal"| CLASS
-    CLASS <-->|"classify"| GEMINI
-    CLASS --> CONTEXT
-    CONTEXT --> FAISS
-    CONTEXT <-->|"embed"| OPENAI
-    CONTEXT --> TOKEN
-    TOKEN -->|"yes"| COMPRESS
-    TOKEN -->|"no"| EXTRACT
-    COMPRESS --> EXTRACT
+    GATE -->|"signal"| EXTRACT
     EXTRACT <-->|"extract"| GEMINI
-    EXTRACT --> ROUTER
-    ROUTER --> SQLITE
-    ROUTER -->|"embed"| OPENAI
+    EXTRACT --> STORE
+    STORE --> SQLITE
+    STORE -->|"embed"| OPENAI
     OPENAI --> FAISS
     
     %% Proactive from WhatsApp
     DEDUP -->|"ALL msgs"| TRIGGER
-    TRIGGER --> SQL_Q
     TRIGGER --> FAISS_Q
-    SQL_Q --> SQLITE
     FAISS_Q --> FAISS
-    SQL_Q --> GEMINI_V
     FAISS_Q --> GEMINI_V
     GEMINI_V <--> GEMINI
     
@@ -170,9 +154,8 @@ flowchart TB
     BG -->|"location"| API_LOC
     POPUP -->|"events"| API_HOT
     
-    API_CTX --> SQL_Q
     API_CTX --> FAISS_Q
-    API_LOC --> SQL_Q
+    API_LOC --> SQLITE
     API_HOT --> SQLITE
     
     %% ============================================
@@ -214,9 +197,9 @@ flowchart TB
     class PHONE,BROWSER input
     class WACLOUD,BAILEYS,PG evolution
     class TRAVEL,SHOP,STREAM,BG,CONTENT,POPUP chrome
-    class WH_RECV,DEDUP,CONTACT,GATE,CLASS,CONTEXT,COMPRESS,EXTRACT,ROUTER pipeline
+    class WH_RECV,DEDUP,CONTACT,GATE,EXTRACT,STORE pipeline
     class SQLITE,FAISS storage
-    class TRIGGER,SQL_Q,FAISS_Q,GEMINI_V proactive
+    class TRIGGER,FAISS_Q,GEMINI_V proactive
     class API_CTX,API_LOC,API_HOT chrome
     class VAPID,WEB_PUSH,OVERLAY,ALERT notify
     class OPENAI,GEMINI,REDIS external

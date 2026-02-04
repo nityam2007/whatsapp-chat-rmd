@@ -21,7 +21,7 @@
  * 10. Mark pipeline complete
  */
 
-import { StoredMessage, StoredEvent } from '../types/index.js';
+import { StoredMessage, StoredEvent } from '../../types/index.js';
 import { 
   messageExists,
   storeEnhancedMessage,
@@ -34,8 +34,8 @@ import {
   getEventBySourceMessage,
   getRecentEventsByChat,
   getDatabase,
-} from '../database/sqlite.js';
-import { checkHeuristicGate, checkHeuristicGateWithSemantics } from './heuristicGate.js';
+} from '../../database/sqlite.js';
+import { checkHeuristicGate } from '../../pipeline/heuristicGate.js';
 import { classifyMessage } from './classifier.js';
 import { buildContext, formatContextForLLM } from './contextBuilder.js';
 import { compressIfNeeded } from './tokenCompressor.js';
@@ -43,8 +43,8 @@ import { extractWithRules } from './ruleEngine.js';
 import { extractEvent } from './extractor.js';
 import { routeEvent } from './eventRouter.js';
 import { detectIntent, formatMatchedEventsContext } from './intentDetector.js';
-import logger from '../utils/logger.js';
-import { metrics, createTimer } from '../utils/metrics.js';
+import logger from '../../utils/logger.js';
+import { metrics, createTimer } from '../../utils/metrics.js';
 import {
   logHeuristic,
   logClassification,
@@ -53,9 +53,9 @@ import {
   logRouting,
   logError,
   PipelineLogContext,
-} from '../utils/pipelineLogger.js';
+} from '../../utils/pipelineLogger.js';
 import { storeMessageEmbedding, learnPattern } from '../vector/semanticSearch.js';
-import { checkForProactiveTriggers } from '../services/proactiveTrigger.js';
+import { checkForProactiveTriggers } from '../../services/proactiveTrigger.js';
 import { extractContextTags } from '../services/contextMatcher.js';
 
 // Configuration for semantic enhancement
@@ -180,7 +180,7 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
     
     if (USE_SEMANTIC_HEURISTIC) {
       try {
-        heuristicResult = await checkHeuristicGateWithSemantics(message.content);
+        heuristicResult = checkHeuristicGate(message.content);
         usedSemanticBoost = !!(heuristicResult as any).semanticBoost;
       } catch (error) {
         logger.warn('Semantic heuristic failed, using basic', { error });
@@ -355,16 +355,16 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
       stage: 'context',
       status: 'success',
       data: { 
-        messageCount: context.messages.length, 
-        tokenCount: context.tokenCount,
+        messageCount: context.messages?.length ?? 0,
+        tokenCount: context.tokenCount ?? 0,
       },
       duration_ms: contextDuration,
     });
     
     logger.debug('Context built', {
       messageId: message.id,
-      messageCount: context.messages.length,
-      tokenCount: context.tokenCount,
+      messageCount: context.messages?.length ?? 0,
+      tokenCount: context.tokenCount ?? 0,
       duration: contextDuration,
     });
 
@@ -375,9 +375,9 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
     
     // Log context info
     logContext(logCtx, {
-      messageCount: processedContext.messages.length,
-      tokenCount: processedContext.tokenCount,
-      compressed: processedContext.compressed,
+      messageCount: processedContext.messages?.length ?? 0,
+      tokenCount: processedContext.tokenCount ?? 0,
+      compressed: processedContext.compressed ?? false,
     });
     
     storePipelineLog({
@@ -385,15 +385,15 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
       stage: 'compression',
       status: processedContext.compressed ? 'compressed' : 'skipped',
       data: { 
-        compressed: processedContext.compressed, 
-        tokenCount: processedContext.tokenCount,
+        compressed: processedContext.compressed ?? false,
+        tokenCount: processedContext.tokenCount ?? 0,
       },
     });
     
     logger.debug('Context processed', {
       messageId: message.id,
-      compressed: processedContext.compressed,
-      tokenCount: processedContext.tokenCount,
+      compressed: processedContext.compressed ?? false,
+      tokenCount: processedContext.tokenCount ?? 0,
     });
 
     // =====================================
@@ -842,7 +842,7 @@ async function checkNegationCancellation(
         });
         
         // Send notification about cancellation
-        const { sendNotification } = await import('../notifications/index.js');
+        const { sendNotification } = await import('../../notifications/index.js');
         await sendNotification({
           type: 'cancelled',
           event_id: event.id,

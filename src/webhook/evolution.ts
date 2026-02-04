@@ -18,7 +18,7 @@ import {
   StoredMessage, 
   PipelineState 
 } from '../types/index.js';
-import { processMessage } from '../pipeline/index.js';
+import { processMessageSimple } from '../pipeline/simplePipeline.js';
 import { 
   upsertContact, 
   formatISTDate, 
@@ -223,14 +223,14 @@ webhookRouter.post('/evolution', async (req: Request, res: Response) => {
 
     // Skip own messages if configured
     if (!PROCESS_OWN_MESSAGES && isFromMe) {
-      logger.debug('Ignoring own message (disabled)');
+      logger.debug('Ignoring own message (disabled)', { messageId, chatId });
       res.status(200).json({ status: 'ignored', reason: 'own_message' });
       return;
     }
 
     // Skip group messages if configured
     if (SKIP_GROUP_MESSAGES && isGroupMessage(chatId)) {
-      logger.debug('Ignoring group message (disabled)', { chatId });
+      logger.debug('Ignoring group message (disabled)', { messageId, chatId });
       res.status(200).json({ status: 'ignored', reason: 'group_message' });
       return;
     }
@@ -276,7 +276,7 @@ webhookRouter.post('/evolution', async (req: Request, res: Response) => {
     pipelineStates.set(message.id, state);
 
     // Process message through pipeline (async)
-    processMessage(message)
+    processMessageSimple(message)
       .then(result => {
         state.stage = result ? 'completed' : 'dropped';
         state.completedAt = Date.now();
@@ -397,7 +397,7 @@ webhookRouter.post('/test', async (req: Request, res: Response) => {
   });
 
   try {
-    const result = await processMessage(message);
+    const result = await processMessageSimple(message);
     
     // Log summary
     logSummary(

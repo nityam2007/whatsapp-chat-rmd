@@ -5,9 +5,10 @@ flowchart TD
 
     subgraph Stage0[Stage 0 - Proactive Trigger]
         PT1[Load Pending Events]
-        PT2[Gemini Context Match]
-        PT3{Match Found?}
-        PT4[Send Reminder]
+        PT2[FAISS Search Top-K]
+        PT3[Gemini Context Match]
+        PT4{Match Found?}
+        PT5[Send Reminder]
     end
 
     subgraph Stage1[Stage 1 - Heuristic Gate]
@@ -15,55 +16,15 @@ flowchart TD
         H2[Calculate Signal Score]
     end
 
-    subgraph Stage2[Stage 2 - Classification]
-        C1[GPT-4o-mini]
-        C2{Event Type?}
-        C3[new_event]
-        C4[reminder]
-        C5[update_event]
-        C6[cancel_event]
-        C7[irrelevant]
-    end
-
-    subgraph Stage3[Stage 3 - Context Building]
-        CTX1[Fetch Recent Messages]
-        CTX2[Search Similar Events]
-        CTX3[Build Context Window]
-    end
-
-    subgraph Stage4[Stage 4 - Rule Engine]
-        RE1{Check Static Rules}
-        RE2{Check Learned Patterns}
-        RE3[High Confidence Match]
-        RE4[Low Confidence]
-    end
-
-    subgraph Stage5[Stage 5 - Token Compression]
-        TC1{Tokens over 2000?}
-        TC2[Compress with Quicksave]
-        TC3[Keep Original]
-    end
-
-    subgraph Stage6[Stage 6 - LLM Extraction]
-        E1[Gemini Flash]
+    subgraph Stage2[Stage 2 - Gemini Extract]
+        E1[Gemini 3 Flash/Pro]
         E2[Extract Structured Data]
-        E3[Log Extraction to DB]
     end
 
-    subgraph Stage7[Stage 7 - Event Routing]
-        R1{Event Type}
-        R2[Store New Event]
-        R3[Update Existing]
-        R4[Cancel Event]
-        R5[Schedule Reminder]
-    end
-
-    subgraph AutoLearn[Auto-Learning Loop]
-        AL1[Pattern Learner]
-        AL2[Analyze Extraction Logs]
-        AL3{Precision over 70?}
-        AL4[Create Learned Pattern]
-        AL5[Reload Rule Engine]
+    subgraph Stage3[Stage 3 - Store + Embed]
+        R1[Store New Event]
+        R2[Generate Embedding]
+        R3[Store in FAISS]
     end
 
     subgraph Output
@@ -78,63 +39,24 @@ flowchart TD
     MSG --> PT1
     PT1 --> PT2
     PT2 --> PT3
-    PT3 -->|Yes| PT4
-    PT3 -->|No| H1
-    PT4 --> H1
+    PT3 --> PT4
+    PT4 -->|Yes| PT5
+    PT4 -->|No| H1
+    PT5 --> H1
     H1 -->|No Signal| DROP
     H1 -->|Has Signal| H2
-    H2 --> C1
-    C1 --> C2
-    C2 --> C3
-    C2 --> C4
-    C2 --> C5
-    C2 --> C6
-    C2 --> C7
-    C7 --> DROP
-    C3 --> CTX1
-    C4 --> CTX1
-    C5 --> CTX1
-    C6 --> CTX1
-    CTX1 --> CTX2
-    CTX2 --> CTX3
-    CTX3 --> RE1
-    RE1 -->|Match| RE3
-    RE1 -->|No Match| RE2
-    RE2 -->|Match| RE3
-    RE2 -->|No Match| RE4
-    RE3 --> R1
-    RE4 --> TC1
-    TC1 -->|Yes| TC2
-    TC1 -->|No| TC3
-    TC2 --> E1
-    TC3 --> E1
+    H2 --> E1
     E1 --> E2
-    E2 --> E3
-    E3 --> R1
-    R1 -->|new_event| R2
-    R1 -->|update| R3
-    R1 -->|cancel| R4
-    R1 -->|reminder| R5
-    R2 --> OUT1
-    R3 --> OUT1
-    R2 --> OUT2
-    R5 --> OUT3
+    E2 --> R1
+    R1 --> R2
+    R2 --> R3
+    R1 --> OUT1
+    R3 --> OUT2
     OUT3 --> OUT4
-
-    E3 -.->|Feed| AL1
-    AL1 --> AL2
-    AL2 --> AL3
-    AL3 -->|Yes| AL4
-    AL3 -->|No| AL1
-    AL4 --> AL5
-    AL5 -.->|Update| RE2
 
     style MSG fill:#25D366,color:#fff
     style PT2 fill:#4285f4,color:#fff
     style PT4 fill:#8b5cf6,color:#fff
-    style C1 fill:#10a37f,color:#fff
     style E1 fill:#4285f4,color:#fff
     style OUT4 fill:#f59e0b,color:#fff
     style DROP fill:#ef4444,color:#fff
-    style RE3 fill:#22c55e,color:#fff
-    style AL4 fill:#8b5cf6,color:#fff

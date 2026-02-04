@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # ===========================================
-# WhatsApp Chat RMD - Full Dev Startup
-# Runs: PostgreSQL (Docker) + Evolution API + RMD + Webapp
+# Argus - Full Dev Startup
+# Runs: PostgreSQL (Docker) + Evolution API + Argus API + Webapp
 # ===========================================
 
 set -e
@@ -21,7 +21,7 @@ cd "$PROJECT_DIR"
 
 echo -e "${BLUE}"
 echo "╔═══════════════════════════════════════════════════════════╗"
-echo "║     WhatsApp Chat RMD - Full Development Setup            ║"
+echo "║     Argus - Full Development Setup                       ║"
 echo "╚═══════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -196,9 +196,9 @@ start_services() {
     cd ..
     echo "  PID: $EVOLUTION_PID"
     
-    # Start RMD Service (port 3000)
-    echo -e "${BLUE}  Starting RMD Service on port 3000...${NC}"
-    npm run dev > logs/rmd.log 2>&1 &
+    # Start Argus API (port 3000)
+    echo -e "${BLUE}  Starting Argus API on port 3000...${NC}"
+    npx tsx src/index.ts > logs/rmd.log 2>&1 &
     RMD_PID=$!
     echo "  PID: $RMD_PID"
     
@@ -239,7 +239,7 @@ show_status() {
     echo "╠═══════════════════════════════════════════════════════════════════╣"
     echo "║                                                                   ║"
     echo "║  Evolution API:  http://localhost:8080                            ║"
-    echo "║  RMD Service:    http://localhost:3000                            ║"
+    echo "║  Argus API:      http://localhost:3000                            ║"
     echo "║  Dashboard:      http://localhost:3002                            ║"
     echo "║                                                                   ║"
     echo "╠═══════════════════════════════════════════════════════════════════╣"

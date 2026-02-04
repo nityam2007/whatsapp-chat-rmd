@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { extractWithRules, RuleEngineResult } from '../../src/pipeline/ruleEngine.js';
+import { extractWithRules, RuleEngineResult } from '../../src/legacy/pipeline/ruleEngine.js';
 
 // Mock config to ensure rule engine is enabled
 vi.mock('../../src/config/index.js', () => ({

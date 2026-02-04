@@ -17,8 +17,8 @@
  */
 
 import Database from 'better-sqlite3';
-import logger from '../utils/logger.js';
-import { getISTTimestamp } from '../database/sqlite.js';
+import logger from '../../utils/logger.js';
+import { getISTTimestamp } from '../../database/sqlite.js';
 
 // ==========================================
 // TYPES

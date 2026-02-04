@@ -27,8 +27,6 @@ export interface Config {
 
   // OpenAI (for embeddings)
   openaiApiKey: string;
-  openaiModelSmall: string;
-  openaiModelBig: string;
   openaiEmbeddingModel: string;
 
   // Gemini (for LLM - OpenAI compatible)
@@ -45,15 +43,8 @@ export interface Config {
   enableProactiveTriggers: boolean;
   proactiveCheckInterval: number;  // Interval in ms for cron checks
 
-  // Token Compression
-  tokenThreshold: number;
-
   // Heuristic Gate
   heuristicThreshold: number;
-
-  // Pipeline settings
-  minConfidence: number;
-  enableRuleEngine: boolean;
 
   // Web Push
   vapidPublicKey: string;
@@ -111,13 +102,11 @@ export const config: Config = {
 
   // OpenAI (for embeddings)
   openaiApiKey: getEnvVar('OPENAI_API_KEY', ''),
-  openaiModelSmall: getEnvVar('OPENAI_MODEL_SMALL', 'gpt-4o-mini'),
-  openaiModelBig: getEnvVar('OPENAI_MODEL_BIG', 'gpt-4o'),
   openaiEmbeddingModel: getEnvVar('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small'),
 
   // Gemini (for LLM - OpenAI compatible)
   geminiApiKey: getEnvVar('GEMINI_API_KEY', ''),
-  geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-2.0-flash'),
+  geminiModel: getEnvVar('GEMINI_MODEL', 'gemini-3-flash-preview'),
   geminiApiUrl: getEnvVar('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta/openai'),
 
   // Evolution API
@@ -129,15 +118,8 @@ export const config: Config = {
   enableProactiveTriggers: getEnvVar('ENABLE_PROACTIVE_TRIGGERS', 'true') === 'true',
   proactiveCheckInterval: getEnvVarInt('PROACTIVE_CHECK_INTERVAL', 60000),  // Default 1 minute
 
-  // Token Compression
-  tokenThreshold: getEnvVarInt('TOKEN_THRESHOLD', 2000),
-
   // Heuristic Gate
   heuristicThreshold: getEnvVarInt('HEURISTIC_THRESHOLD', 1),
-
-  // Pipeline settings
-  minConfidence: parseFloat(getEnvVar('MIN_CONFIDENCE', '0.3')),
-  enableRuleEngine: getEnvVar('ENABLE_RULE_ENGINE', 'true') === 'true',
 
   // Web Push
   vapidPublicKey: getEnvVar('VAPID_PUBLIC_KEY', ''),
@@ -157,7 +139,7 @@ export function validateConfig(): string[] {
   const warnings: string[] = [];
 
   if (!config.openaiApiKey) {
-    warnings.push('OPENAI_API_KEY not set - using fallback implementations');
+    warnings.push('OPENAI_API_KEY not set - embeddings will use fallback');
   }
 
   if (!config.redisUrl && config.nodeEnv === 'production') {

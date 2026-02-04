@@ -13,11 +13,11 @@
  */
 
 import OpenAI from 'openai';
-import { ClassificationResult, EventType } from '../types/index.js';
-import { config } from '../config/index.js';
-import logger from '../utils/logger.js';
-import { storeLLMCall } from '../database/sqlite.js';
-import { logLLM, logError, logSuccess, logWarn } from '../utils/loudLogger.js';
+import { ClassificationResult, EventType } from '../../types/index.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
+import { storeLLMCall } from '../../database/sqlite.js';
+import { logLLM, logError, logSuccess, logWarn } from '../../utils/loudLogger.js';
 import { getFewShotExamples, initSemanticSearch } from '../vector/semanticSearch.js';
 
 const CLASSIFICATION_PROMPT = `You are a message classifier for a reminder/calendar system. Your job is to identify messages that describe SCHEDULABLE events or reminders.
@@ -127,7 +127,7 @@ function getLLMClient(): { client: OpenAI; model: string; provider: string } {
   }
   return {
     client: getOpenAIClient(),
-    model: config.openaiModelSmall,
+      model: 'gpt-4o-mini',
     provider: 'openai',
   };
 }

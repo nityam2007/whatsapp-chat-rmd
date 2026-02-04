@@ -166,8 +166,8 @@ show_banner() {
             /____/                
 EOF
     echo -e "${NC}"
-    echo -e "${BOLD}${MAGENTA}  WhatsApp AI Event Extraction System${NC}"
-    echo -e "${CYAN}  v0.5.0 - Auto-Learning Edition${NC}"
+    echo -e "${BOLD}${MAGENTA}  Argus - WhatsApp Event Extraction${NC}"
+    echo -e "${CYAN}  v1.0.0 - Archv2 (Gemini + FAISS)${NC}"
     echo ""
 }
 
@@ -181,10 +181,10 @@ check_prerequisites() {
     # Check Node.js
     if command -v node &> /dev/null; then
         NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-        if [ "$NODE_VERSION" -ge 20 ]; then
+        if [ "$NODE_VERSION" -ge 22 ]; then
             log_success "Node.js $(node -v)"
         else
-            log_error "Node.js 20+ required (found v$NODE_VERSION)"
+            log_error "Node.js 22+ required (found v$NODE_VERSION)"
             has_errors=true
         fi
     else
@@ -293,11 +293,13 @@ setup_environment() {
         set +a
     fi
     
-    # Check OpenAI API Key
-    if [ -n "${OPENAI_API_KEY:-}" ] && [ "$OPENAI_API_KEY" != "your-api-key-here" ]; then
-        log_success "OpenAI API key configured"
+    # Check LLM API Keys (Gemini preferred, OpenAI fallback)
+    if [ -n "${GEMINI_API_KEY:-}" ] && [ "$GEMINI_API_KEY" != "your-api-key-here" ]; then
+        log_success "Gemini API key configured"
+    elif [ -n "${OPENAI_API_KEY:-}" ] && [ "$OPENAI_API_KEY" != "your-api-key-here" ]; then
+        log_warn "Gemini API key not set - using OpenAI fallback"
     else
-        log_warn "OpenAI API key not set - AI features will not work"
+        log_warn "No LLM API key set - AI features will not work"
     fi
     
     # Generate VAPID keys if needed
@@ -504,7 +506,11 @@ start_nodejs_services() {
     
     if [ "${service_started[0]:-pending}" = "pending" ]; then
         log_step "Starting Argus API..."
-        nohup npx tsx src/index.ts > logs/rmd.log 2>&1 &
+        if [ -f "dist/index.js" ]; then
+            nohup node dist/index.js > logs/rmd.log 2>&1 &
+        else
+            nohup npx tsx src/index.ts > logs/rmd.log 2>&1 &
+        fi
         local argus_pid=$!
         echo "$argus_pid" >> "$pids_file"
         service_names+=("Argus API")
@@ -529,7 +535,11 @@ start_nodejs_services() {
             kill "$existing_pid" 2>/dev/null || true
             sleep 1
             log_step "Starting Push Webapp..."
-            nohup npx tsx webapp/server.ts > logs/webapp.log 2>&1 &
+            if [ -f "dist/webapp/server.js" ]; then
+                nohup node dist/webapp/server.js > logs/webapp.log 2>&1 &
+            else
+                nohup npx tsx webapp/server.ts > logs/webapp.log 2>&1 &
+            fi
             local webapp_pid=$!
             echo "$webapp_pid" >> "$pids_file"
             service_names+=("Push Webapp")
@@ -540,7 +550,11 @@ start_nodejs_services() {
         fi
     else
         log_step "Starting Push Webapp..."
-        nohup npx tsx webapp/server.ts > logs/webapp.log 2>&1 &
+        if [ -f "dist/webapp/server.js" ]; then
+            nohup node dist/webapp/server.js > logs/webapp.log 2>&1 &
+        else
+            nohup npx tsx webapp/server.ts > logs/webapp.log 2>&1 &
+        fi
         local webapp_pid=$!
         echo "$webapp_pid" >> "$pids_file"
         service_names+=("Push Webapp")
@@ -567,8 +581,9 @@ start_nodejs_services() {
             kill "$existing_pid" 2>/dev/null || true
             sleep 1
             log_step "Starting Evolution API..."
-            (cd evolution-api && nohup npm run start > ../logs/evolution.log 2>&1 &)
-            local evolution_pid=$!
+            (cd evolution-api && nohup npm run start > ../logs/evolution.log 2>&1 & echo $! > ../.evolution.pid)
+            local evolution_pid
+            evolution_pid=$(cat .evolution.pid 2>/dev/null || echo "")
             echo "$evolution_pid" >> "$pids_file"
             service_names+=("Evolution API")
             service_pids+=("$evolution_pid")
@@ -578,8 +593,9 @@ start_nodejs_services() {
         fi
     else
         log_step "Starting Evolution API..."
-        (cd evolution-api && nohup npm run start > ../logs/evolution.log 2>&1 &)
-        local evolution_pid=$!
+        (cd evolution-api && nohup npm run start > ../logs/evolution.log 2>&1 & echo $! > ../.evolution.pid)
+        local evolution_pid
+        evolution_pid=$(cat .evolution.pid 2>/dev/null || echo "")
         echo "$evolution_pid" >> "$pids_file"
         service_names+=("Evolution API")
         service_pids+=("$evolution_pid")

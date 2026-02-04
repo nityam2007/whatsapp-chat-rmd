@@ -4,16 +4,15 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.8.1 | **LLM**: Gemini 2.0 Flash
+**Current Version**: v1.0.0 | **LLM**: Gemini 3 Flash
 
-## What's New in v0.8.1: Push Notification Sync & Keyword Matching
+## What's New in v1.0.0: Archv2 Simplified Pipeline
 
-- **Push Notification Sync**: Webapp subscriptions now sync to the main RMD server for reliable push delivery
-- **Keyword Matching Fallback**: Proactive triggers now use keyword matching when FAISS embeddings aren't available
-- **Pipeline Live View**: Real-time visualization of all 13 pipeline stages in the dashboard
-- **RMD Status Display**: See push subscription count from the main server in the notifications page
+- **Simple pipeline**: dedup → store → heuristic → single-call Gemini extract
+- **FAISS-backed semantic search** with persisted index + ID mapping
+- **Legacy modules moved** to `src/legacy/` for clean archv2 core
 
-## Proactive Triggers (v0.8.0)
+## Proactive Triggers (v1.0.0)
 
 Argus is now **proactive**, not just reactive. When you send ANY message, Argus intelligently checks if it relates to any pending tasks and reminds you automatically.
 
@@ -300,7 +299,7 @@ open http://localhost:8080
 | Variable | Description |
 |----------|-------------|
 | `GEMINI_API_KEY` | Google Gemini API key (recommended) |
-| `OPENAI_API_KEY` | OpenAI API key (fallback) |
+| `OPENAI_API_KEY` | OpenAI API key (embeddings fallback) |
 
 ### AI Model Configuration
 
@@ -308,15 +307,14 @@ open http://localhost:8080
 |----------|-------------|---------|
 | `GEMINI_MODEL` | Gemini model to use | `gemini-3-flash-preview` |
 | `GEMINI_API_URL` | Gemini API endpoint | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| `OPENAI_MODEL_SMALL` | Fast classifier model | `gpt-4o-mini` |
-| `OPENAI_MODEL_BIG` | Extraction model | `gpt-4o` |
+| `OPENAI_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
 
 ### Available Gemini Models
 
 | Model | ID | Best For |
 |-------|-----|----------|
-| Gemini 3 Flash | `gemini-3-flash-preview` | Speed + intelligence (recommended) |
-| Gemini 3 Pro | `gemini-3-pro-preview` | Complex tasks, best accuracy |
+| Gemini 3 Flash | `gemini-3-flash-preview` | High-speed, cost-efficient, low-latency |
+| Gemini 3 Pro | `gemini-3-pro-preview` | Advanced reasoning + complex workflows |
 | Gemini 2.5 Flash | `gemini-2.5-flash` | Previous generation |
 
 ### Other Settings

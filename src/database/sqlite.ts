@@ -1343,12 +1343,7 @@ export function getEventsByContext(query: ExtensionContextQuery): ContextMatchRe
   const threeMonthsAgoISO = threeMonthsAgo.toISOString();
   
   // Build dynamic query based on provided context
-  let conditions: string[] = [
-    `e.status IN ('pending', 'pending_confirmation', 'active', 'soft')`,
-    `e.archived_at IS NULL`,
-    `e.created_at >= ?`,
-  ];
-  let params: (string | number)[] = [threeMonthsAgoISO];
+  // Baseline filters for all queries
   
   // Location-based matching (highest priority)
   if (query.location) {

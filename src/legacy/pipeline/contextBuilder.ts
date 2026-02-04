@@ -11,10 +11,10 @@
  * - Provides richer context for extraction accuracy
  */
 
-import { StoredMessage, MessageContext } from '../types/index.js';
-import { getDatabase, getContactName } from '../database/sqlite.js';
+import { StoredMessage, MessageContext } from '../../types/index.js';
+import { getDatabase, getContactName } from '../../database/sqlite.js';
 import { countTokens } from './tokenCompressor.js';
-import logger from '../utils/logger.js';
+import logger from '../../utils/logger.js';
 import { findSimilarMessages, initSemanticSearch } from '../vector/semanticSearch.js';
 
 const CONTEXT_WINDOW_SIZE = 10; // Number of recent messages to include

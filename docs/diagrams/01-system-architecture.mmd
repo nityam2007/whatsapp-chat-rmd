@@ -23,9 +23,9 @@ flowchart TB
         subgraph ARGUS_CONTAINER["Argus Service Container"]
             WEBHOOK["Webhook Handler"]
             PIPELINE["AI Pipeline"]
-            RULE_ENGINE["Rule Engine + Learning"]
+            SIMPLE["Simple Pipeline"]
             DB[("SQLite DB")]
-            VECTOR[("FAISS Vectors")]
+            VECTOR[("FAISS Index")]
             SCHEDULER["Scheduler"]
         end
 
@@ -43,7 +43,8 @@ flowchart TB
     end
 
     subgraph EXTERNAL["External Services"]
-        OPENAI["OpenAI API"]
+        GEMINI["Gemini 3 Flash/Pro API"]
+        OPENAI["OpenAI Embeddings"]
     end
 
     subgraph BROWSER["User Browser"]
@@ -55,26 +56,26 @@ flowchart TB
     SERVERS <--> BAILEYS
     BAILEYS --> EVO
     EVO -->|"Webhook POST"| WEBHOOK
-    WEBHOOK --> PIPELINE
-    PIPELINE --> RULE_ENGINE
-    RULE_ENGINE -->|"Complex cases"| OPENAI
-    PIPELINE --> DB
-    PIPELINE --> VECTOR
-    PIPELINE --> SCHEDULER
+    WEBHOOK --> SIMPLE
+    SIMPLE --> GEMINI
+    SIMPLE --> OPENAI
+    SIMPLE --> DB
+    SIMPLE --> VECTOR
+    SIMPLE --> SCHEDULER
     SCHEDULER --> PUSH_API
     PUSH_API --> SW
     SW --> NOTIF
     
     EVO <--> REDIS
-    PIPELINE <--> REDIS
-    PIPELINE --> LOKI
+    SIMPLE <--> REDIS
+    SIMPLE --> LOKI
     LOKI --> GRAFANA
 
     %% Styling
     style WA fill:#25D366,color:#fff
     style EVO fill:#6366f1,color:#fff
-    style PIPELINE fill:#8b5cf6,color:#fff
-    style RULE_ENGINE fill:#f59e0b,color:#fff
+    style SIMPLE fill:#8b5cf6,color:#fff
+    style GEMINI fill:#4285f4,color:#fff
     style OPENAI fill:#10a37f,color:#fff
     style NOTIF fill:#f59e0b,color:#fff
     style REDIS fill:#dc2626,color:#fff

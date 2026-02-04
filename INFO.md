@@ -6,26 +6,19 @@
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.9.0 (Chrome Extension + Proactive Architecture)
+**Current Version**: v1.0.0 (Archv2 Simplified Pipeline)
 
 ---
 
 ## Key Features
 
-- **Chrome Extension** for proactive browser-based reminders (NEW in v0.9.0)
-- **3-Month Hot Data Window** - Events stay queryable for 3 months
-- **Context-Aware Triggers** - Reminders based on travel sites, shopping, etc.
-- Multi-language support (English, Hindi, Tamil, Telugu, Marathi, Bengali, Gujarati)
-- Rule Engine with 70+ static patterns
-- Auto-Learning System that improves over time
-- Real-time metrics and monitoring
-- Push notifications for reminders
-- Gemini 2.0 Flash for intelligent extraction
-- Professional webapp dashboard with metrics
-- Docker-based deployment with health checks
-- **Comprehensive LLM logging** (input/output to DB and files)
-- **E2E test suite** for pipeline validation
-- **Proactive Triggers** (v0.8.0) - Intelligent context-based reminders via Push notifications
+- **WhatsApp-first ingestion** via Evolution API webhooks
+- **Simple pipeline** (dedup → store → heuristic → Gemini extract)
+- **FAISS semantic search** with a local index + ID mapping
+- **3-Month hot window** with daily archive job
+- **Chrome URL detection** for proactive triggers (no DOM read for MVP)
+- **Push notifications** via webapp dashboard
+- **Gemini Flash** for single-call extraction
 
 ---
 
@@ -39,12 +32,12 @@
 | Language | TypeScript | 5.8.x | Type-safe JavaScript |
 | Web Framework | Express.js | 5.x | HTTP server & routing |
 | Database | SQLite | better-sqlite3 12.x | Event & message storage |
-| Vector Store | FAISS-like | Custom | Semantic similarity search |
+| Vector Store | FAISS | faiss-node | Semantic similarity search |
 | Schema Validation | Zod | 3.24.x | Runtime type validation |
 | Logging | Winston | 3.x | Structured logging |
 | WebSocket | ws | 8.x | Real-time communication |
 
-### Chrome Extension (NEW in v0.9.0)
+### Chrome Extension
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
@@ -58,14 +51,9 @@
 
 | Component | Technology | Version | Purpose |
 |-----------|------------|---------|---------|
-| Primary LLM | Gemini 3 Flash Preview | Latest | Fast + intelligent extraction |
-| Alternative LLM | Gemini 3 Pro Preview | Latest | Complex extraction tasks |
-| Fallback Provider | OpenAI API | SDK 4.96.x | GPT models backup |
-| Classifier Model | GPT-4o-mini | Latest | Fast event classification |
-| Extractor Model | Gemini 3 Flash | Latest | Detailed data extraction |
+| Primary LLM | Gemini 3 Flash Preview | Current | High-speed, cost-efficient extraction |
+| Fallback Provider | OpenAI API | SDK 4.96.x | Embeddings fallback |
 | Embedding Model | text-embedding-3-small | Latest | Vector embeddings |
-| Token Counting | tiktoken | 1.x | Accurate token estimation |
-| Token Compression | quicksave | - | Context compression |
 
 ### WhatsApp Integration (Evolution API)
 
@@ -134,22 +122,15 @@
 +-----------------------------------------------------------------------------------+
 |                           ARGUS SERVICE (Port 3000)                               |
 |  +-------------+  +-------------+  +-------------+  +-------------+               |
-|  | Heuristic   |->| Classifier  |->| Context     |->| Rule Engine |               |
-|  | Gate        |  | (GPT-4o-m)  |  | Builder     |  | + Learning  |               |
-|  +-------------+  +-------------+  +-------------+  +------+------+               |
-|                                                            |                      |
-|                    +---------------------------------------+                      |
-|                    |                                       |                      |
-|                    v High Confidence                       v Low Confidence       |
-|            +-------+-------+                       +-------+-------+              |
-|            | Event Router  |                       | LLM Extractor |              |
-|            +-------+-------+                       | (GPT-4o)      |              |
-|                    |                               +-------+-------+              |
-|                    v                                       |                      |
-|  +-------------+  +-------------+  +-------------+         |                      |
-|  | SQLite DB   |  | Vector      |  | Scheduler   |<--------+                      |
-|  | (Events)    |  | Store       |  | (Reminders) |                                |
-|  +-------------+  +-------------+  +------+------+                                |
+|  | Simple      |->| Store Raw   |->| Embed       |->| FAISS Search |               |
+|  | Pipeline    |  | Messages    |  | (OpenAI)    |  | (Top-K)      |               |
+|  +-------------+  +-------------+  +-------------+  +-------------+               |
+|                    |                                                         |    |
+|                    v                                                         v    |
+|               +----------+                                             +-----------+|
+|               | SQLite   |                                             | Gemini    ||
+|               | (Msgs)   |                                             | (Validate)||
+|               +----------+                                             +-----------+|
 +-------------------------------------------|---------------------------------------+
                                             |
                                             v
@@ -167,7 +148,7 @@
                                +------------------------+
 ```
 
-### Pipeline Flow (v0.8.0)
+### Pipeline Flow (v1.0.0)
 
 ```
 WhatsApp Message
@@ -176,54 +157,20 @@ Evolution API Webhook
     |
 Store Raw Message (SQLite)
     |
-+---[PROACTIVE TRIGGER CHECK]---+  ← NEW! Runs for ALL messages
-|   Load pending events          |
-|   Gemini matches context       |
-|   Send reminder if matched     |
-+--------------------------------+
-    |
 Heuristic Gate (Signal Detection)
     | (if signal found)
-Small LLM Classifier (gpt-4o-mini)
-    | (if relevant)
-Context Builder + Token Compression
+Gemini Extract (single call)
     |
-Rule Engine (Static + Learned Patterns)
+[New Event] --> Insert DB --> Generate Embedding --> Store in FAISS
     |
-    +--[High Confidence]--> Event Router
+Proactive Trigger Check (runs for ALL messages)
     |
-    +--[Low Confidence]--> Big LLM Extraction (Gemini)
-                               |
-                           Log to llm_extraction_logs
-                               |
-                           Context Extraction (tags, location, keywords)
-                               |
-                           Event Router
+FAISS Search (Top-K=100, similarity>0.65)
     |
-[New Event] --> Insert DB --> Generate Embedding --> Store Vectors
-[Update Event] --> Vector Search --> Update DB
-[Signal Event] --> Dependency Search --> Activate Pending
+Gemini Validation (1M context)
     |
-Notify Orchestrator --> Push Notification + WhatsApp Reply
+Push Notification
 ```
-
-### Auto-Learning Loop
-
-```
-LLM Extractions --> llm_extraction_logs
-                           |
-                    Pattern Learner (hourly)
-                           |
-                    Analyze & Validate
-                           |
-                    learned_patterns DB
-                           |
-                    Rule Engine Reload (5 min)
-                           |
-                    Better Rule Matching --> Fewer LLM Calls --> Cost Savings
-```
-
----
 
 ## Docker Services
 
@@ -264,7 +211,7 @@ WHATSAPP-CHAT-RMD/
 │   └── prompt.md                # AI pipeline specification
 ├── src/
 │   ├── index.ts                 # Main entry point
-│   ├── server.ts                # Express server (v0.5.0)
+│   ├── server.ts                # Express server
 │   ├── shared/
 │   │   ├── types.ts             # Zod schemas & shared types
 │   │   └── utils.ts             # Shared utilities
@@ -276,16 +223,9 @@ WHATSAPP-CHAT-RMD/
 │   │   ├── notificationService.ts # Web Push notifications
 │   │   └── dashboardRouter.ts   # Dashboard API
 │   ├── pipeline/
-│   │   ├── index.ts             # Pipeline orchestration
-│   │   ├── heuristicGate.ts     # Signal detection (regional languages)
-│   │   ├── classifier.ts        # Small LLM classifier
-│   │   ├── contextBuilder.ts    # Context aggregation
-│   │   ├── tokenCompressor.ts   # Token compression
-│   │   ├── ruleEngine.ts        # Rule-based extraction + dynamic patterns
-│   │   ├── extractor.ts         # Big LLM extraction + logging
-│   │   ├── patternLearner.ts    # Auto-learning service (v0.5.0)
-│   │   ├── intentDetector.ts    # Intent detection
-│   │   └── eventRouter.ts       # Event routing logic
+│   │   ├── simplePipeline.ts    # Simplified pipeline (archv2)
+│   │   └── heuristicGate.ts     # Heuristic signal detection
+│   ├── legacy/                  # Legacy pipeline modules (archv1)
 │   ├── database/
 │   │   └── sqlite.ts            # SQLite operations + learning tables
 │   ├── vector/
@@ -299,18 +239,18 @@ WHATSAPP-CHAT-RMD/
 │   └── utils/
 │       ├── logger.ts            # Winston logger
 │       ├── metrics.ts           # Pipeline metrics
-│       ├── loudLogger.ts        # Loud visual logging (v0.7.8)
+│       ├── loudLogger.ts        # Loud visual logging
 │       └── pipelineLogger.ts    # Pipeline stage logging
 ├── tests/
 │   ├── setup.ts                 # Test setup
 │   ├── unit/
 │   │   ├── heuristicGate.test.ts    # 27 tests
-│   │   ├── classifier.test.ts        # Tests
-│   │   ├── tokenCompressor.test.ts   # 11 tests
-│   │   ├── extractor.test.ts         # 10 tests
-│   │   ├── ruleEngine.test.ts        # 77 tests
+│   │   ├── classifier.test.ts        # Legacy tests (archv1)
+│   │   ├── tokenCompressor.test.ts   # Legacy tests (archv1)
+│   │   ├── extractor.test.ts         # Legacy tests (archv1)
+│   │   ├── ruleEngine.test.ts        # Legacy tests (archv1)
 │   │   ├── metrics.test.ts           # 51 tests
-│   │   ├── patternLearner.test.ts    # 12 tests (v0.5.0)
+│   │   ├── patternLearner.test.ts    # Legacy tests (archv1)
 │   │   └── types.test.ts             # 13 tests
 │   └── integration/
 │       ├── pipeline.test.ts          # 8 tests
@@ -334,8 +274,8 @@ WHATSAPP-CHAT-RMD/
 │   ├── stop.sh                  # Stop all services
 │   ├── whatsapp-login.sh        # WhatsApp QR login
 │   ├── test-message.sh          # Send test message
-│   ├── e2e-test.ts              # Full E2E test suite (v0.7.8)
-│   └── e2e-quick.ts             # Quick E2E test runner (v0.7.8)
+│   ├── e2e-test.ts              # Full E2E test suite
+│   └── e2e-quick.ts             # Quick E2E test runner
 ├── docs/
 │   ├── ARCHITECTURE.md          # Architecture diagrams (Mermaid)
 │   └── diagrams/
@@ -346,7 +286,7 @@ WHATSAPP-CHAT-RMD/
 ├── data/
 │   ├── db/                      # SQLite database files
 │   ├── vectors/                 # Vector index files
-│   └── logs/                    # Pipeline & LLM logs (v0.7.8)
+│   └── logs/                    # Pipeline & LLM logs
 ├── INFO.md                      # This file - Project index
 ├── RULES.md                     # Project rules and guidelines
 ├── CHANGELOG.md                 # Version changelog
@@ -370,21 +310,13 @@ WHATSAPP-CHAT-RMD/
 | `subscriptions` | Push notification endpoints | id, endpoint, p256dh_key, auth_key |
 | `pipeline_logs` | Pipeline execution logs | id, message_id, stage, duration_ms |
 
-### Auto-Learning Tables (v0.5.0)
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `llm_extraction_logs` | LLM extraction history | id, raw_message, extracted_title, confidence |
-| `learned_patterns` | Auto-generated patterns | id, regex_pattern, hit_count, accuracy |
-| `pattern_learning_runs` | Learning job history | id, patterns_added, status |
-
-### Logging Tables (v0.7.8)
+### Logging Tables
 
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
 | `llm_calls` | All LLM API calls | id, call_type, model, prompt, response, tokens, duration_ms |
 
-### Proactive Trigger Columns (v0.8.0)
+### Proactive Trigger Columns
 
 Added to `events` table:
 
@@ -403,9 +335,7 @@ Added to `events` table:
 | Type | Description | Example |
 |------|-------------|---------|
 | `new_event` | New calendar event | "Meeting tomorrow at 3pm" |
-| `reminder` | Simple reminder | "Remind me to call John" |
 | `update_event` | Modify existing event | "Change meeting to 4pm" |
-| `cancel_event` | Cancel an event | "Cancel tomorrow's meeting" |
 | `signal_event` | Conditional trigger | "When it rains, remind me..." |
 | `irrelevant` | Not event-related | "How are you?" |
 
@@ -417,7 +347,7 @@ Added to `events` table:
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key for LLM access |
+| `OPENAI_API_KEY` | OpenAI API key for embeddings |
 
 ### Optional - Application
 
@@ -434,14 +364,13 @@ Added to `events` table:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_API_KEY` | - | Google Gemini API key (primary) |
-| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model for extraction |
+| `GEMINI_MODEL` | `gemini-3-flash-preview` | Gemini model for extraction |
 | `GEMINI_API_URL` | `https://generativelanguage.googleapis.com/v1beta/openai` | Gemini API endpoint |
 | `OPENAI_API_KEY` | - | OpenAI API key (fallback) |
-| `OPENAI_MODEL_SMALL` | `gpt-4o-mini` | Fast classifier model |
-| `OPENAI_MODEL_BIG` | `gpt-4o` | Detailed extractor model |
-| `TOKEN_THRESHOLD` | `2000` | Compression trigger threshold |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
+| `FAISS_INDEX_PATH` | `./data/vectors/index` | FAISS index path |
 
-### Optional - Proactive Triggers (v0.8.0)
+### Optional - Proactive Triggers
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -449,11 +378,10 @@ Added to `events` table:
 | `PROACTIVE_CHECK_INTERVAL` | `60000` | Interval for checking triggers (ms) |
 | `EVOLUTION_INSTANCE_NAME` | `default` | WhatsApp instance for sending replies |
 
-### Optional - Auto-Learning
+### Optional - Metrics
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PATTERN_LEARNING_INTERVAL` | `3600000` | Learning job interval (1 hour) |
 | `METRICS_LOG_INTERVAL` | `300000` | Metrics logging interval (5 min) |
 
 ### Optional - Push Notifications
@@ -504,16 +432,6 @@ Added to `events` table:
 | GET | `/api/metrics` | Full metrics JSON |
 | GET | `/api/metrics/summary` | Human-readable summary |
 | POST | `/api/metrics/reset` | Reset all metrics |
-
-### Learning Endpoints (v0.5.0)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/learning/stats` | Pattern learning statistics |
-| GET | `/api/learning/patterns` | List learned patterns |
-| GET | `/api/learning/logs` | LLM extraction logs |
-| POST | `/api/learning/run` | Trigger manual learning run |
-| DELETE | `/api/learning/patterns/:id` | Deactivate a pattern |
 
 ### Dashboard Endpoints
 
@@ -588,12 +506,12 @@ npm test -- --watch
 
 | Module | Tests | Description |
 |--------|-------|-------------|
-| Rule Engine | 77 | Pattern matching, multi-language |
+| Rule Engine | 77 | Legacy pattern matching (archv1) |
 | Metrics | 51 | Counter, timing, rates |
 | Heuristic Gate | 27 | Signal detection |
 | API Integration | 17 | HTTP endpoints |
 | Types | 13 | Schema validation |
-| Pattern Learner | 12 | Auto-learning system |
+| Pattern Learner | 12 | Legacy auto-learning system |
 | Token Compressor | 11 | Compression logic |
 | Extractor | 10 | LLM extraction |
 | Pipeline Integration | 8 | End-to-end flow |
@@ -606,7 +524,8 @@ npm test -- --watch
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v0.9.0 | Current | **Chrome Extension + Proactive Architecture** - Browser context detection, overlay cards, 3-month hot data window, extension API endpoints |
+| v1.0.0 | Current | **Archv2 Simplified Pipeline** - Dedup → heuristic → Gemini extract, FAISS-backed search |
+| v0.9.0 | - | **Chrome Extension + Proactive Architecture** - Browser context detection, overlay cards, 3-month hot data window, extension API endpoints |
 | v0.8.1 | - | **Push Sync + Keyword Matching** - Push subscriptions sync to RMD, keyword fallback for proactive triggers, Pipeline Live View |
 | v0.8.0 | - | **Proactive Trigger System** - Intelligent context-based reminders via Push, Cron scheduler |
 | v0.7.9 | - | Reminder Classification Fix, UI Event Actions |
@@ -620,7 +539,7 @@ npm test -- --watch
 | v0.7.1 | - | Documentation Update |
 | v0.7.0 | - | Gemini 3 Flash, Improved Dashboard, Metrics Page |
 | v0.6.0 | - | Pending Confirmation, Contextual Triggers |
-| v0.5.0 | - | Auto-Learning System, 237 tests |
+| v0.5.0 | - | Auto-Learning System (legacy) |
 | v0.4.1 | - | Metrics system (51 tests) |
 | v0.4.0 | - | Rule engine, Regional languages (77 tests) |
 | v0.3.0 | - | Startup scripts, Push webapp |

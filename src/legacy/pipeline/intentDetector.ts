@@ -10,10 +10,10 @@
  * 3. Return matched events as context for the extractor/router
  */
 
-import { StoredEvent, StoredMessage } from '../types/index.js';
-import { getVectorStore, generateEmbedding } from '../vector/faiss.js';
-import { getDatabase } from '../database/sqlite.js';
-import logger from '../utils/logger.js';
+import { StoredEvent, StoredMessage } from '../../types/index.js';
+import { getVectorStore, generateEmbedding } from '../../vector/faiss.js';
+import { getDatabase } from '../../database/sqlite.js';
+import logger from '../../utils/logger.js';
 
 export type IntentType = 'cancel' | 'reschedule' | 'update' | 'complete' | 'none';
 

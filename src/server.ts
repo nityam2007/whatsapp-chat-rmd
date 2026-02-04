@@ -38,10 +38,6 @@ import {
   getDatabaseStats,
   cleanupTestData,
   deleteContactAndData,
-  getEmbeddingStats,
-  getSemanticPatternStats,
-  getAllSemanticPatterns,
-  cleanupOldPatterns,
   getEventsByContext,
   getHotEvents,
   getExtensionStats,
@@ -49,14 +45,6 @@ import {
 } from './database/sqlite.js';
 import logger from './utils/logger.js';
 import { metrics } from './utils/metrics.js';
-import {
-  getPatternLearningStats,
-  getAllLearnedPatterns,
-  getLLMExtractionLogs,
-  runPatternLearning,
-  deactivatePattern,
-} from './pipeline/patternLearner.js';
-import { getLearnedPatternCounts } from './pipeline/ruleEngine.js';
 import { 
   registerSubscription, 
   unregisterSubscription, 
@@ -957,166 +945,6 @@ export function createServer(): Express {
   });
 
   // =============================================
-  // Pattern Learning API (Auto-Learning System)
-  // =============================================
-  
-  // Get pattern learning statistics
-  app.get('/api/learning/stats', apiAuth, (_req: Request, res: Response) => {
-    try {
-      const stats = getPatternLearningStats();
-      const loadedPatterns = getLearnedPatternCounts();
-      
-      res.json({
-        stats,
-        loadedPatterns,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to get pattern learning stats', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // Get all learned patterns
-  app.get('/api/learning/patterns', apiAuth, (_req: Request, res: Response) => {
-    try {
-      const patterns = getAllLearnedPatterns();
-      
-      res.json({
-        patterns,
-        count: patterns.length,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to get learned patterns', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // Get LLM extraction logs (for debugging)
-  app.get('/api/learning/logs', apiAuth, (req: Request, res: Response) => {
-    try {
-      const limit = parseInt(req.query.limit as string) || 50;
-      const minConfidence = parseFloat(req.query.minConfidence as string) || 0.5;
-      const eventType = req.query.eventType as string | undefined;
-      
-      const logs = getLLMExtractionLogs({ limit, minConfidence, eventType });
-      
-      res.json({
-        logs,
-        count: logs.length,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to get LLM extraction logs', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // Trigger pattern learning manually
-  app.post('/api/learning/run', apiAuth, async (_req: Request, res: Response) => {
-    try {
-      logger.info('Manual pattern learning triggered');
-      const result = await runPatternLearning();
-      
-      res.json({
-        message: 'Pattern learning completed',
-        ...result,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Pattern learning failed', { error });
-      res.status(500).json({ error: 'Pattern learning failed' });
-    }
-  });
-
-  // Deactivate a learned pattern
-  app.delete('/api/learning/patterns/:patternId', apiAuth, (req: Request, res: Response) => {
-    try {
-      const patternId = req.params.patternId as string;
-      deactivatePattern(patternId);
-      
-      logger.info('Pattern deactivated via API', { patternId });
-      res.json({
-        message: 'Pattern deactivated',
-        patternId,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to deactivate pattern', { error, patternId: req.params.patternId });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // =============================================
-  // Semantic Search & Embeddings API
-  // =============================================
-  
-  // Get semantic search statistics
-  app.get('/api/semantic/stats', apiAuth, (_req: Request, res: Response) => {
-    try {
-      const embeddings = getEmbeddingStats();
-      const patterns = getSemanticPatternStats();
-      
-      res.json({
-        embeddings,
-        patterns,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to get semantic stats', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-  
-  // Get all semantic patterns
-  app.get('/api/semantic/patterns', apiAuth, (_req: Request, res: Response) => {
-    try {
-      const patterns = getAllSemanticPatterns();
-      
-      // Don't return full embeddings (too large) - just metadata
-      const patternsWithoutEmbeddings = patterns.map(p => ({
-        id: p.id,
-        text: p.text,
-        category: p.category,
-        classification: p.classification,
-        confidence: p.confidence,
-        hit_count: p.hit_count,
-        last_used: p.last_used,
-        is_seed: p.is_seed,
-        created_at: p.created_at,
-      }));
-      
-      res.json({
-        patterns: patternsWithoutEmbeddings,
-        count: patterns.length,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to get semantic patterns', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-  
-  // Cleanup old unused patterns
-  app.post('/api/semantic/cleanup', apiAuth, (req: Request, res: Response) => {
-    try {
-      const maxAgeDays = parseInt(req.query.days as string) || 30;
-      const deleted = cleanupOldPatterns(maxAgeDays);
-      
-      res.json({
-        message: 'Pattern cleanup completed',
-        deleted,
-        maxAgeDays,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to cleanup patterns', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  // =============================================
   // Data Collection Stats API
   // =============================================
   
@@ -1359,7 +1187,7 @@ export function startServer(): void {
     
     console.log(`
 +=====================================================================+
-|                         Argus v0.9.0                                |
+|                         Argus v1.0.0                                |
 |              (Proactive Chrome Extension + AI Pipeline)             |
 +=====================================================================+
 |  Server: http://localhost:${String(config.port).padEnd(5)}                                  |
@@ -1399,12 +1227,6 @@ export function startServer(): void {
 |    GET  /api/extension/hot-events - Get 3-month hot events          |
 |    GET  /api/extension/status     - Extension connection status     |
 |                                                                     |
-|  Auto-Learning API:                                                 |
-|    GET  /api/learning/stats       - Pattern learning statistics     |
-|    GET  /api/learning/patterns    - List learned patterns           |
-|    GET  /api/learning/logs        - LLM extraction logs             |
-|    POST /api/learning/run         - Trigger pattern learning        |
-|    DEL  /api/learning/patterns/:id - Deactivate pattern             |
 +=====================================================================+
     `);
   });

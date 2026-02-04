@@ -30,7 +30,7 @@ Argus is an AI-powered event extraction system that:
 
 ### Tech Stack
 - **Runtime**: Node.js with TypeScript
-- **LLM**: Gemini 2.0 Flash (via OpenAI-compatible API)
+- **LLM**: Gemini 3 Flash (via OpenAI-compatible API)
 - **Vector Store**: FAISS for semantic similarity search
 - **Embeddings**: Gemini text-embedding-004
 - **Database**: SQLite with better-sqlite3
@@ -610,7 +610,7 @@ Output:
 ```bash
 # LLM Configuration (Gemini - Primary)
 GEMINI_API_KEY=your_key_here
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3-flash-preview
 GEMINI_API_URL=https://generativelanguage.googleapis.com/v1beta/openai
 
 # Database

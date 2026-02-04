@@ -4,11 +4,10 @@
  * Tracks performance metrics for the event extraction pipeline including:
  * - Message processing rates
  * - LLM usage and skip rates
- * - Rule engine hit rates
  * - Processing latencies
  * - Error rates
  * 
- * Designed for monitoring and optimization of the 3-tier extraction system.
+ * Designed for monitoring and optimization of the simple extraction system.
  */
 
 import logger from './logger.js';
@@ -120,9 +119,9 @@ class MetricsCollector {
     this.messagesPassedHeuristic++;
     this.lastUpdated = new Date();
   }
-  
+
   /**
-   * Record a successful rule engine extraction (LLM skipped)
+   * Record a successful rule engine extraction (legacy compatibility)
    */
   recordRuleEngineExtraction(): void {
     this.ruleEngineExtractions++;
@@ -245,6 +244,7 @@ class MetricsCollector {
       heuristicDropRate: `${Math.round(metrics.heuristicDropRate * 100)}%`,
       ruleEngineHitRate: `${Math.round(metrics.ruleEngineHitRate * 100)}%`,
       llmSkipRate: `${Math.round(metrics.llmSkipRate * 100)}%`,
+      errorRate: `${Math.round(metrics.errorRate * 100)}%`,
       avgLatencyMs: metrics.avgTotalLatency,
       eventsCreated: metrics.eventsCreated,
       errors: metrics.errors,

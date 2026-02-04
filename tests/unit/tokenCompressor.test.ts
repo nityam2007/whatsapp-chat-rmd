@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { estimateTokens, compressIfNeeded, shouldCompress } from '../../src/pipeline/tokenCompressor.js';
+import { estimateTokens, compressIfNeeded, shouldCompress } from '../../src/legacy/pipeline/tokenCompressor.js';
 import { MessageContext } from '../../src/shared/types.js';
 
 // Mock config with API key to enable compression

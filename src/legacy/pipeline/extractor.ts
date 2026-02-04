@@ -10,9 +10,9 @@
  */
 
 import OpenAI from 'openai';
-import { ExtractedEvent, EventType } from '../types/index.js';
-import { config } from '../config/index.js';
-import logger from '../utils/logger.js';
+import { ExtractedEvent, EventType } from '../../types/index.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
 
 // Callback for logging extractions (set by the pipeline)
 let extractionLogCallback: ((data: {
@@ -61,7 +61,7 @@ function logExtraction(data: {
       extractedTime: data.result.start_time,
       extractedDate: data.result.start_time ? data.result.start_time.split('T')[0] : null,
       extractedParticipants: data.result.participants || [],
-      llmModel: config.openaiModelBig,
+      llmModel: 'gpt-4o',
       llmTokensUsed: data.tokensUsed,
       llmLatencyMs: data.latencyMs,
       confidence: data.result.confidence,
@@ -209,7 +209,7 @@ function getLLMClient(): { client: OpenAI; model: string; provider: string } {
   }
   return {
     client: getOpenAIClient(),
-    model: config.openaiModelBig,
+      model: 'gpt-4o',
     provider: 'openai',
   };
 }

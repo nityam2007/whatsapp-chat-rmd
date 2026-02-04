@@ -5,6 +5,14 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [1.0.0] - 2026-02-04
+
+### Changed - Archv2 Simplified Core
+
+- Replaced the multi-stage pipeline with a simple dedup → store → heuristic → single-call Gemini extract flow.
+- Backed semantic search with faiss-node and a persisted local index + ID map.
+- Moved legacy pipeline, semantic, and learning modules under `src/legacy/`.
+
 ## [0.9.0] - 2026-02-04
 
 ### Added - Chrome Extension + Proactive Architecture Redesign

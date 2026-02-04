@@ -14,21 +14,13 @@ flowchart LR
             WH[Webhook]
             PT[Proactive Trigger]
             HG[Heuristic Gate]
-            CL[Classifier]
-            CB[Context Builder]
-            RE[Rule Engine]
-            EX[Extractor]
-            ER[Event Router]
+            EX[Gemini Extract]
+            STORE[Store + Embed]
         end
         
         subgraph Storage
             SQL[(SQLite)]
             VEC[(Vectors)]
-        end
-        
-        subgraph Learning[Auto-Learning]
-            PL[Pattern Learner]
-            LP[(Learned Patterns)]
         end
         
         SCH[Scheduler]
@@ -41,43 +33,34 @@ flowchart LR
     end
 
     subgraph AI[AI Services]
-        CLASSIFIER[OpenAI API]
-        GEMINI[Gemini API]
+        GEMINI[Gemini 3 Flash/Pro API]
+        OPENAI[OpenAI Embeddings]
     end
 
     WA -->|Messages| WAS
     WAS -->|Baileys| EVO
     EVO -->|Webhook| WH
     WH --> PT
-    PT -->|Check Pending| SQL
-    PT -->|Match Found| PUSH
+    PT -->|Check Pending| VEC
+    PT -->|Candidate Matches| GEMINI
+    GEMINI -->|Validated Match| PUSH
     PT --> HG
-    HG -->|Pass| CL
-    CL -->|Classify| CLASSIFIER
-    CLASSIFIER -->|Event Type| CL
-    CL --> CB
-    CB --> RE
-    RE -->|High Confidence| ER
-    RE -->|Low Confidence| EX
+    HG -->|Pass| EX
     EX -->|Extract| GEMINI
     GEMINI -->|Structured Data| EX
-    EX --> ER
-    ER --> SQL
-    ER --> VEC
-    ER --> SCH
+    EX --> STORE
+    STORE --> SQL
+    STORE --> VEC
+    STORE --> SCH
     SCH -->|When Time| PUSH
     PUSH -->|Web Push| SW
     SW --> NOT
 
-    EX -.->|Log| SQL
-    SQL -.->|Feed| PL
-    PL -.->|Create| LP
-    LP -.->|Load| RE
+    OPENAI --> VEC
 
     style WA fill:#25D366,color:#fff
     style PT fill:#8b5cf6,color:#fff
-    style CLASSIFIER fill:#10a37f,color:#fff
     style GEMINI fill:#4285f4,color:#fff
+    style OPENAI fill:#10a37f,color:#fff
     style NOT fill:#f59e0b,color:#fff
-    style RE fill:#22c55e,color:#fff
-    style PL fill:#8b5cf6,color:#fff
+    style STORE fill:#22c55e,color:#fff

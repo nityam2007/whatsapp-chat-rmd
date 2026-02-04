@@ -22,8 +22,8 @@ flowchart TB
     subgraph Backend["Argus Backend (localhost:3000)"]
         direction TB
         API["📡 Extension API<br/>/api/extension/*"]
-        DB["💾 SQLite Database<br/>Events + Context"]
-        FAISS["🔍 FAISS Vector<br/>Semantic Search"]
+        DB["💾 SQLite Database<br/>Events + Messages"]
+        FAISS["🔍 FAISS Index<br/>Semantic Search"]
     end
     
     subgraph User["User Actions"]
@@ -40,8 +40,8 @@ flowchart TB
     
     %% Extension internal flow
     BG -->|"Extract context<br/>(keywords, location)"| API
-    API -->|"Query events"| DB
-    API -->|"Semantic match"| FAISS
+        API -->|"Query events"| DB
+        API -->|"Semantic match"| FAISS
     API -->|"Matching events"| BG
     BG -->|"Send matches"| CS
     CS -->|"Display overlay"| User

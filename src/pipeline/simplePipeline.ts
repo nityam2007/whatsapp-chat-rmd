@@ -1,5 +1,5 @@
 /**
- * Simplified Pipeline (v0.9.0)
+ * Simplified Pipeline (v1.0.0)
  * 
  * Only 3 stages:
  * 1. Heuristic Gate - Filter noise (saves 90% LLM costs)
@@ -16,12 +16,13 @@ import {
   updateMessageHeuristic,
   updateMessagePipelineComplete,
   storePipelineLog,
-  storeEvent,
+  storeEventWithExtraction,
   getEventBySourceMessage,
 } from '../database/sqlite.js';
 import { checkHeuristicGate } from './heuristicGate.js';
 import { checkForProactiveTriggers } from '../services/proactiveTrigger.js';
 import { sendNotification } from '../notifications/index.js';
+import { getVectorStore, generateEmbedding } from '../vector/faiss.js';
 import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
 import OpenAI from 'openai';
@@ -44,7 +45,7 @@ function getGeminiClient(): OpenAI {
  * Simple 3-stage pipeline
  */
 export async function processMessageSimple(message: StoredMessage): Promise<StoredEvent | null> {
-  const startTime = Date.now();
+  const pipelineStartTime = Date.now();
   
   logger.info('Simple pipeline started', { 
     messageId: message.id, 
@@ -105,7 +106,7 @@ export async function processMessageSimple(message: StoredMessage): Promise<Stor
       stage: 'heuristic',
       status: heuristic.hasSignal ? 'passed' : 'dropped',
       data: { score: heuristic.score, signals: heuristic.signals.slice(0, 5) },
-      duration_ms: Date.now() - startTime,
+      duration_ms: Date.now() - pipelineStartTime,
     });
     
     if (!heuristic.hasSignal) {
@@ -124,10 +125,10 @@ export async function processMessageSimple(message: StoredMessage): Promise<Stor
       stage: 'extraction',
       status: extraction ? 'success' : 'no_event',
       data: extraction ? { title: extraction.title, type: extraction.event_type } : {},
-      duration_ms: Date.now() - startTime,
+      duration_ms: Date.now() - pipelineStartTime,
     });
     
-    if (!extraction) {
+    if (!extraction || extraction.event_type === 'irrelevant') {
       logger.debug('No event extracted', { messageId: message.id });
       updateMessagePipelineComplete(message.id);
       return null;
@@ -136,47 +137,69 @@ export async function processMessageSimple(message: StoredMessage): Promise<Stor
     // =====================================
     // STAGE 3: Store + Notify
     // =====================================
+    const eventType = extraction.event_type === 'update_event'
+      ? 'update_event'
+      : extraction.event_type === 'signal_event'
+        ? 'signal_event'
+        : extraction.event_type === 'irrelevant'
+          ? 'irrelevant'
+          : 'new_event';
+    const reminderTime = extraction.reminder_time || null;
+    const endTime = reminderTime ? new Date(reminderTime).toISOString() : null;
     const event: StoredEvent = {
       id: uuidv4(),
       title: extraction.title,
-      event_type: extraction.event_type,
-      event_date: extraction.event_date || null,
-      event_time: extraction.event_time || null,
-      reminder_time: extraction.reminder_time || null,
+      event_type: eventType,
+      start_time: reminderTime,
+      end_time: endTime,
+      condition_type: null,
+      condition_value: null,
       participants: extraction.participants || [],
       location: extraction.location || null,
       status: 'pending',
       source_message_id: message.id,
       source_message_content: message.content,
       chat_id: message.chat_id,
+      contact_name: message.sender_name || null,
       created_by: message.sender || 'unknown',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       confidence: extraction.confidence || 0.8,
       context_tags: extraction.context_tags || [],
       trigger_keywords: extraction.trigger_keywords || [],
+      user_id: 'default',
+      proactive_triggered: false,
+      proactive_trigger_count: 0,
     };
     
-    storeEvent(event);
+    storeEventWithExtraction(event, extraction);
+
+    try {
+      const vectorStore = getVectorStore();
+      const embedding = await generateEmbedding(message.content);
+      await vectorStore.addVector(event.id, embedding);
+    } catch (error) {
+      logger.warn('Failed to store FAISS embedding', { error, messageId: message.id });
+    }
     
     storePipelineLog({
       message_id: message.id,
       stage: 'stored',
       status: 'success',
       data: { eventId: event.id, title: event.title },
-      duration_ms: Date.now() - startTime,
+      duration_ms: Date.now() - pipelineStartTime,
     });
     
     logger.info('Event created', { 
       messageId: message.id, 
       eventId: event.id, 
       title: event.title,
-      duration: Date.now() - startTime,
+      duration: Date.now() - pipelineStartTime,
     });
     
     // Send notification if event is due soon
-    if (event.reminder_time) {
-      const reminderDate = new Date(event.reminder_time);
+    if (event.start_time) {
+      const reminderDate = new Date(event.start_time);
       const now = new Date();
       const diffMs = reminderDate.getTime() - now.getTime();
       
@@ -186,7 +209,7 @@ export async function processMessageSimple(message: StoredMessage): Promise<Stor
           type: 'reminder',
           event_id: event.id,
           title: 'Upcoming Reminder',
-          body: event.title,
+          body: event.title || 'Reminder',
         });
       }
     }
@@ -207,8 +230,6 @@ export async function processMessageSimple(message: StoredMessage): Promise<Stor
 async function extractWithGemini(message: StoredMessage): Promise<{
   title: string;
   event_type: string;
-  event_date?: string;
-  event_time?: string;
   reminder_time?: string;
   participants?: string[];
   location?: string;
@@ -231,15 +252,16 @@ Chat: ${message.chat_id}
 Content: "${message.content}"
 
 TASK:
-1. Determine if this message contains an actionable event, reminder, or task
+1. Determine if this message contains an actionable event or reminder
 2. If yes, extract the details. If no, return null.
+
+TIMEZONE:
+All user times are in IST (UTC+5:30). Return reminder_time in UTC ISO-8601 (ending in Z).
 
 RETURN JSON (or null if no event):
 {
   "title": "Short task description (max 10 words)",
-  "event_type": "reminder|event|task|meeting|deadline",
-  "event_date": "YYYY-MM-DD or null",
-  "event_time": "HH:MM or null",
+  "event_type": "new_event|update_event|signal_event|irrelevant",
   "reminder_time": "ISO datetime when to remind, or null",
   "participants": ["names mentioned"],
   "location": "place if mentioned",
@@ -249,11 +271,11 @@ RETURN JSON (or null if no event):
 }
 
 EXAMPLES:
-- "remind me to call mom tomorrow at 5pm" → reminder to call mom
-- "meeting with john on friday" → meeting event
-- "bring potato from market" → task
+- "remind me to call mom tomorrow at 5pm" → new_event with reminder_time
+- "meeting with john on friday" → new_event with reminder_time
+- "bring potato from market" → new_event (reminder_time can be null)
 - "haha that's funny" → null (not actionable)
-- "kal 3 baje doctor appointment" → reminder for tomorrow 3pm
+- "kal 3 baje doctor appointment" → new_event with reminder_time
 
 Return ONLY the JSON object or null. No other text.`;
 

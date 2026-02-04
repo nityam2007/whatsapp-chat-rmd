@@ -20,7 +20,6 @@
 import { HeuristicResult } from '../types/index.js';
 import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
-import { getSemanticBoost, initSemanticSearch } from '../vector/semanticSearch.js';
 
 // Configurable threshold (default from config or fallback)
 const HEURISTIC_THRESHOLD = config.heuristicThreshold ?? 1;
@@ -484,71 +483,12 @@ const CASUAL_PHRASES = [
 /**
  * Extended heuristic result with semantic data
  */
-export interface ExtendedHeuristicResult extends HeuristicResult {
-  semanticBoost?: number;
-  semanticCategory?: string;
-  semanticSimilarity?: number;
-}
-
 /**
  * Checks if a message contains potential event signals (FAST - keyword only)
  * Returns a score and list of detected signals
- * 
- * Use this for quick filtering before semantic analysis
  */
 export function checkHeuristicGate(content: string): HeuristicResult {
   return checkHeuristicGateInternal(content);
-}
-
-/**
- * Checks if a message contains potential event signals WITH semantic boost
- * This is the ENHANCED version that uses embeddings for better accuracy
- * 
- * Use this for borderline cases or when accuracy is critical
- */
-export async function checkHeuristicGateWithSemantics(content: string): Promise<ExtendedHeuristicResult> {
-  // First do fast keyword-based check
-  const baseResult = checkHeuristicGateInternal(content);
-  
-  // If clearly negative or clearly positive with high score, skip semantic analysis
-  if (baseResult.score < 0 || baseResult.score >= 5) {
-    return baseResult;
-  }
-  
-  // For borderline cases (score 0-5), use semantic similarity for boost
-  try {
-    // Initialize semantic search if needed
-    await initSemanticSearch();
-    
-    const semanticResult = await getSemanticBoost(content);
-    
-    if (semanticResult.boost > 0) {
-      const enhancedScore = baseResult.score + semanticResult.boost;
-      const hasSignal = enhancedScore >= HEURISTIC_THRESHOLD;
-      
-      logger.debug('Heuristic gate with semantic boost', {
-        originalScore: baseResult.score,
-        semanticBoost: semanticResult.boost,
-        enhancedScore: Math.round(enhancedScore * 10) / 10,
-        matchedCategory: semanticResult.matchedCategory,
-        topSimilarity: semanticResult.topSimilarity,
-        hasSignal,
-      });
-      
-      return {
-        hasSignal,
-        signals: [...baseResult.signals, `semantic:${semanticResult.matchedCategory || 'match'}`],
-        score: Math.round(enhancedScore * 10) / 10,
-        semanticBoost: semanticResult.boost,
-        semanticCategory: semanticResult.matchedCategory,
-        semanticSimilarity: semanticResult.topSimilarity,
-      };
-    }
-  } catch (error) {
-    logger.error('Semantic boost failed, using base result', { error });
-  }
-  
-  return baseResult;
 }
 
 /**
@@ -721,7 +661,6 @@ export function getPatterns(): { strong: RegExp[], medium: RegExp[] } {
 
 export default { 
   checkHeuristicGate, 
-  checkHeuristicGateWithSemantics,
   getKeywordsForCategory, 
   getPatterns 
 };

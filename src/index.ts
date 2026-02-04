@@ -3,10 +3,7 @@
  * 
  * Argus - AI-powered event extraction from WhatsApp messages
  * 
- * AUTO-LEARNING SYSTEM:
- * This system learns from LLM extractions to create better rule patterns.
- * Over time, more messages are handled by the rule engine (fast, free)
- * instead of the LLM (slow, expensive).
+ * Simplified archv2 pipeline with FAISS-backed semantic search.
  */
 
 import { initDatabase, closeDatabase } from './database/sqlite.js';
@@ -16,29 +13,10 @@ import { startServer } from './server.js';
 import { validateConfig } from './config/index.js';
 import logger from './utils/logger.js';
 import { metrics } from './utils/metrics.js';
-import { 
-  initPatternLearningTables, 
-  logLLMExtraction, 
-  getCompiledLearnedPatterns,
-  runPatternLearning,
-  updatePatternStats,
-} from './pipeline/patternLearner.js';
-import { 
-  loadLearnedPatterns, 
-  needsPatternReload,
-  setPatternStatsCallback,
-} from './pipeline/ruleEngine.js';
-import { setExtractionLogCallback } from './pipeline/extractor.js';
-import Database from 'better-sqlite3';
 
 // Metrics logging interval (default: 5 minutes)
 const METRICS_LOG_INTERVAL = parseInt(process.env.METRICS_LOG_INTERVAL || '300000', 10);
-// Pattern learning interval (default: 1 hour)
-const PATTERN_LEARNING_INTERVAL = parseInt(process.env.PATTERN_LEARNING_INTERVAL || '3600000', 10);
-
 let metricsInterval: NodeJS.Timeout | null = null;
-let patternLearningInterval: NodeJS.Timeout | null = null;
-let patternReloadInterval: NodeJS.Timeout | null = null;
 
 async function main(): Promise<void> {
   logger.info('Starting Argus...');
@@ -51,29 +29,12 @@ async function main(): Promise<void> {
   }
 
   // Initialize database
-  let db: Database.Database;
   try {
-    db = initDatabase();
+    initDatabase();
     logger.info('Database initialized');
   } catch (error) {
     logger.error('Failed to initialize database', { error });
     process.exit(1);
-  }
-
-  // Initialize pattern learning tables
-  try {
-    initPatternLearningTables(db);
-    logger.info('Pattern learning tables initialized');
-    
-    // Load learned patterns into rule engine
-    reloadLearnedPatterns();
-    
-    // Set up callbacks for auto-learning
-    setupPatternLearningCallbacks();
-    
-  } catch (error) {
-    logger.error('Failed to initialize pattern learning', { error });
-    // Non-fatal - continue without pattern learning
   }
 
   // Initialize vector store
@@ -109,76 +70,9 @@ async function main(): Promise<void> {
     });
   }
 
-  // Start periodic pattern learning (if interval > 0)
-  if (PATTERN_LEARNING_INTERVAL > 0) {
-    patternLearningInterval = setInterval(async () => {
-      try {
-        logger.info('Running scheduled pattern learning...');
-        const result = await runPatternLearning();
-        logger.info('Pattern learning completed', result);
-        
-        // Reload patterns after learning
-        if (result.patternsAdded > 0) {
-          reloadLearnedPatterns();
-        }
-      } catch (error) {
-        logger.error('Scheduled pattern learning failed', { error });
-      }
-    }, PATTERN_LEARNING_INTERVAL);
-    
-    logger.info('Periodic pattern learning enabled', {
-      intervalMs: PATTERN_LEARNING_INTERVAL,
-      intervalHours: Math.round(PATTERN_LEARNING_INTERVAL / 3600000),
-    });
-  }
-
-  // Start pattern reload checker (every 5 minutes)
-  patternReloadInterval = setInterval(() => {
-    if (needsPatternReload()) {
-      reloadLearnedPatterns();
-    }
-  }, 5 * 60 * 1000);
-
   // Graceful shutdown
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
-}
-
-/**
- * Reload learned patterns into the rule engine
- */
-function reloadLearnedPatterns(): void {
-  try {
-    const patterns = getCompiledLearnedPatterns();
-    loadLearnedPatterns(patterns);
-  } catch (error) {
-    logger.warn('Failed to reload learned patterns', { error });
-  }
-}
-
-/**
- * Set up callbacks for the auto-learning feedback loop
- */
-function setupPatternLearningCallbacks(): void {
-  // Callback for logging LLM extractions
-  setExtractionLogCallback((data) => {
-    try {
-      logLLMExtraction(data);
-    } catch (error) {
-      logger.warn('Failed to log LLM extraction', { error });
-    }
-  });
-  
-  // Callback for updating pattern stats (hit/miss)
-  setPatternStatsCallback((patternId, hit) => {
-    try {
-      updatePatternStats(patternId, hit);
-    } catch (error) {
-      logger.warn('Failed to update pattern stats', { error });
-    }
-  });
-  
-  logger.info('Pattern learning callbacks configured');
 }
 
 async function shutdown(): Promise<void> {
@@ -191,18 +85,6 @@ async function shutdown(): Promise<void> {
     // Log final metrics summary
     logger.info('Final metrics before shutdown');
     metrics.logSummary();
-  }
-  
-  // Stop pattern learning
-  if (patternLearningInterval) {
-    clearInterval(patternLearningInterval);
-    patternLearningInterval = null;
-  }
-  
-  // Stop pattern reload checker
-  if (patternReloadInterval) {
-    clearInterval(patternReloadInterval);
-    patternReloadInterval = null;
   }
   
   // Cleanup reminders

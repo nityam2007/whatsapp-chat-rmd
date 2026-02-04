@@ -8,9 +8,9 @@
  */
 
 import OpenAI from 'openai';
-import { StoredMessage, StoredEvent } from '../shared/types.js';
-import { config } from '../config/index.js';
-import logger from '../utils/logger.js';
+import { StoredMessage, StoredEvent } from '../../shared/types.js';
+import { config } from '../../config/index.js';
+import logger from '../../utils/logger.js';
 
 // Gemini client (OpenAI compatible)
 let geminiClient: OpenAI | null = null;

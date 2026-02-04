@@ -10,11 +10,11 @@
  * 3. Providing semantic context for extraction
  */
 
-import { generateEmbedding, initVectorStore } from './faiss.js';
-import logger from '../utils/logger.js';
+import { generateEmbedding, initVectorStore } from '../../vector/faiss.js';
+import logger from '../../utils/logger.js';
 import fs from 'fs';
 import path from 'path';
-import { config } from '../config/index.js';
+import { config } from '../../config/index.js';
 
 // Types
 export interface SemanticPattern {
@@ -48,8 +48,9 @@ export interface SemanticSearchResult {
 }
 
 // Storage paths
-const PATTERNS_FILE = path.join(config.faissIndexPath, 'semantic_patterns.json');
-const MESSAGE_EMBEDDINGS_FILE = path.join(config.faissIndexPath, 'message_embeddings.json');
+const FAISS_DIR = config.faissIndexPath || path.join(process.cwd(), 'data', 'vectors', 'index');
+const PATTERNS_FILE = path.join(FAISS_DIR, 'semantic_patterns.json');
+const MESSAGE_EMBEDDINGS_FILE = path.join(FAISS_DIR, 'message_embeddings.json');
 
 // In-memory stores
 let semanticPatterns: SemanticPattern[] = [];

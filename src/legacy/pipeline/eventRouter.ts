@@ -17,18 +17,18 @@ import {
   StoredMessage, 
   EventStatus,
   ConflictResult 
-} from '../types/index.js';
+} from '../../types/index.js';
 import { 
   getDatabase, 
   eventExistsForMessage, 
   getEventBySourceMessage,
   storeEventWithExtraction,
   getRecentEventsByChat,
-} from '../database/sqlite.js';
-import { getVectorStore, generateEmbedding } from '../vector/faiss.js';
-import { scheduleReminder } from '../scheduler/index.js';
-import { sendNotification } from '../notifications/index.js';
-import logger from '../utils/logger.js';
+} from '../../database/sqlite.js';
+import { getVectorStore, generateEmbedding } from '../../vector/faiss.js';
+import { scheduleReminder } from '../../scheduler/index.js';
+import { sendNotification } from '../../notifications/index.js';
+import logger from '../../utils/logger.js';
 
 // Similarity threshold for considering events as duplicates
 const DUPLICATE_SIMILARITY_THRESHOLD = 0.85;

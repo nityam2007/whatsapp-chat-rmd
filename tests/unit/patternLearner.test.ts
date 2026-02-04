@@ -19,7 +19,7 @@ import {
   getPatternLearningStats,
   getAllLearnedPatterns,
   getCompiledLearnedPatterns,
-} from '../../src/pipeline/patternLearner.js';
+} from '../../src/legacy/pipeline/patternLearner.js';
 
 // Create in-memory database for tests
 let db: Database.Database;

@@ -7,7 +7,7 @@ flowchart TB
     %% - WhatsApp messages as PRIMARY data source
     %% - Chrome: URL detection ONLY (no DOM reading for MVP)
     %% - Single FAISS for semantic search
-    %% - Gemini 1M context for validation
+    %% - Gemini 1M context for validation (Gemini 3 Flash/Pro)
     %% - Token compression: ktg-one/quicksave
     %% 
     %% PORTS:
@@ -94,7 +94,7 @@ flowchart TB
             direction TB
             TRIGGER["Trigger Sources:<br/>1. WhatsApp message (event detection)<br/>2. Chrome URL change<br/>3. Scheduled time triggers"]
             SEARCH["FAISS Search<br/>top-K=100, similarity>0.65<br/>Returns msg_id → SQLite join<br/>+ timestamp, contact, name, chat_type"]
-            GEMINI_ALL["Gemini 1M Context<br/>Input: Query + top-100 enriched msgs<br/>Output: Relevant reminder + action<br/>Confidence threshold: 80%"]
+        GEMINI_ALL["Gemini 1M Context (Gemini 3 Flash/Pro)<br/>Input: Query + top-100 enriched msgs<br/>Output: Relevant reminder + action<br/>Confidence threshold: 80%"]
         end
         
         %% Simple API
@@ -115,7 +115,7 @@ flowchart TB
     subgraph External["☁️ EXTERNAL APIs"]
         direction TB
         OPENAI["OpenAI API<br/>text-embedding-3-small<br/>1536 dimensions"]
-        GEMINI["Gemini Flash API<br/>1M context window<br/>Validation + Extraction"]
+        GEMINI["Gemini 3 Flash/Pro API<br/>1M context window<br/>Validation + Extraction"]
     end
 
     %% ============================================

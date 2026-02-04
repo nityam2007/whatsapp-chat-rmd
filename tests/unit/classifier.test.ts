@@ -16,6 +16,17 @@ vi.mock('../../src/config/index.js', () => ({
   },
 }));
 
+// Mock sqlite logging to avoid DB access
+vi.mock('../../src/database/sqlite.js', () => ({
+  storeLLMCall: vi.fn(),
+}));
+
+// Mock semantic search to avoid FAISS access
+vi.mock('../../src/legacy/vector/semanticSearch.js', () => ({
+  initSemanticSearch: vi.fn().mockResolvedValue(undefined),
+  getFewShotExamples: vi.fn().mockResolvedValue([]),
+}));
+
 // Mock OpenAI
 vi.mock('openai', () => ({
   default: vi.fn().mockImplementation(() => ({
@@ -40,14 +51,14 @@ describe('Classifier', () => {
 
   describe('Classification Results', () => {
     it('should classify event messages as new_event', async () => {
-      const { classifyMessage } = await import('../../src/pipeline/classifier.js');
+      const { classifyMessage } = await import('../../src/legacy/pipeline/classifier.js');
       const result = await classifyMessage('Let\'s have a meeting tomorrow at 2pm');
       expect(result.event_type).toBe('new_event');
       expect(result.confidence).toBeGreaterThan(0);
     });
 
     it('should return valid classification result structure', async () => {
-      const { classifyMessage } = await import('../../src/pipeline/classifier.js');
+      const { classifyMessage } = await import('../../src/legacy/pipeline/classifier.js');
       const result = await classifyMessage('Any message');
       
       expect(result).toHaveProperty('event_type');
@@ -58,7 +69,7 @@ describe('Classifier', () => {
     });
 
     it('should handle empty messages', async () => {
-      const { classifyMessage } = await import('../../src/pipeline/classifier.js');
+      const { classifyMessage } = await import('../../src/legacy/pipeline/classifier.js');
       const result = await classifyMessage('');
       expect(result).toHaveProperty('event_type');
     });
@@ -66,7 +77,7 @@ describe('Classifier', () => {
 
   describe('With Mocked LLM', () => {
     it('should return mocked classification', async () => {
-      const { classifyMessage } = await import('../../src/pipeline/classifier.js');
+      const { classifyMessage } = await import('../../src/legacy/pipeline/classifier.js');
       const result = await classifyMessage('Meeting tomorrow at 3pm');
       expect(result.event_type).toBe('new_event');
       expect(result.confidence).toBe(0.9);
@@ -75,7 +86,7 @@ describe('Classifier', () => {
 
   describe('Confidence Scores', () => {
     it('should return confidence between 0 and 1', async () => {
-      const { classifyMessage } = await import('../../src/pipeline/classifier.js');
+      const { classifyMessage } = await import('../../src/legacy/pipeline/classifier.js');
       const result = await classifyMessage('Meeting tomorrow');
       expect(result.confidence).toBeGreaterThanOrEqual(0);
       expect(result.confidence).toBeLessThanOrEqual(1);

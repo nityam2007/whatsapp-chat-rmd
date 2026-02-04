@@ -43,6 +43,7 @@
     "cron": "^4.4.0",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "faiss-node": "^0.5.1",
     "ioredis": "^5.9.0",
     "nanoid": "^5.1.5",
     "openai": "^4.96.0",

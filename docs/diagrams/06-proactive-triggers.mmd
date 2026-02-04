@@ -3,6 +3,7 @@ flowchart TB
 
     subgraph ProactiveCheck[Stage 0 - Proactive Trigger]
         LOAD[Load Pending Events]
+        FAISS[FAISS Search Top-K]
         GEMINI[Gemini Context Match]
         MATCH{Match Found?}
     end
@@ -14,23 +15,22 @@ flowchart TB
 
     subgraph Pipeline[Normal Pipeline]
         HEURISTIC[Heuristic Gate]
-        CLASSIFY[Classification]
-        EXTRACT[LLM Extraction]
-        STORE[Store Event]
+        EXTRACT[Gemini Extract]
+        STORE[Store + Embed]
     end
 
     DB[(Database)]
 
     MSG --> LOAD
-    LOAD --> GEMINI
+    LOAD --> FAISS
+    FAISS --> GEMINI
     GEMINI --> MATCH
     MATCH -->|Yes| PUSH
     MATCH -->|No| HEURISTIC
     PUSH --> MARK
     MARK --> DB
     MARK --> HEURISTIC
-    HEURISTIC --> CLASSIFY
-    CLASSIFY --> EXTRACT
+    HEURISTIC --> EXTRACT
     EXTRACT --> STORE
     STORE --> DB
 

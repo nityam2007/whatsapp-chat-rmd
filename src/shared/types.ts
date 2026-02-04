@@ -62,6 +62,7 @@ export type StoredMessage = z.infer<typeof StoredMessageSchema>;
 export const StoredEventSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
+  event_type: z.string().nullable().optional(),
   start_time: z.string().nullable(),
   start_time_ist: z.string().nullable().optional(),  // IST formatted time
   end_time: z.string().nullable(),
@@ -95,7 +96,7 @@ export type StoredEvent = z.infer<typeof StoredEventSchema>;
 export const ContainerCommandSchema = z.object({
   type: z.enum([
     'NEW_EVENT',
-    'UPDATE_EVENT', 
+    'UPDATE_EVENT',
     'DELETE_EVENT',
     'SEND_NOTIFICATION',
     'REGISTER_PUSH',

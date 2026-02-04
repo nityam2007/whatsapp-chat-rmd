@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { extractEvent } from '../../src/pipeline/extractor.js';
+import { extractEvent } from '../../src/legacy/pipeline/extractor.js';
 
 // Mock OpenAI
 vi.mock('openai', () => ({
