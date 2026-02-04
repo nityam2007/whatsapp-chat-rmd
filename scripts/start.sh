@@ -584,11 +584,24 @@ start_nodejs_services() {
             (cd evolution-api && nohup npm run start > ../logs/evolution.log 2>&1 & echo $! > ../.evolution.pid)
             local evolution_pid
             evolution_pid=$(cat .evolution.pid 2>/dev/null || echo "")
+            if [ -z "$evolution_pid" ]; then
+                sleep 0.2
+                evolution_pid=$(cat .evolution.pid 2>/dev/null || echo "")
+            fi
+            if [ -z "$evolution_pid" ] && command -v pgrep &> /dev/null; then
+                evolution_pid=$(pgrep -f "tsx .*evolution-api/src/main.ts" | head -1)
+                if [ -z "$evolution_pid" ]; then
+                    evolution_pid=$(pgrep -f "evolution-api.*tsx" | head -1)
+                fi
+                if [ -n "$evolution_pid" ]; then
+                    echo "$evolution_pid" > .evolution.pid
+                fi
+            fi
             echo "$evolution_pid" >> "$pids_file"
             service_names+=("Evolution API")
             service_pids+=("$evolution_pid")
             service_ports+=("$EVOLUTION_PORT")
-            service_urls+=("http://localhost:$EVOLUTION_PORT/")
+            service_urls+=("http://localhost:$EVOLUTION_PORT/manager/")
             service_logfiles+=("logs/evolution.log")
         fi
     else
@@ -596,11 +609,24 @@ start_nodejs_services() {
         (cd evolution-api && nohup npm run start > ../logs/evolution.log 2>&1 & echo $! > ../.evolution.pid)
         local evolution_pid
         evolution_pid=$(cat .evolution.pid 2>/dev/null || echo "")
+        if [ -z "$evolution_pid" ]; then
+            sleep 0.2
+            evolution_pid=$(cat .evolution.pid 2>/dev/null || echo "")
+        fi
+        if [ -z "$evolution_pid" ] && command -v pgrep &> /dev/null; then
+            evolution_pid=$(pgrep -f "tsx .*evolution-api/src/main.ts" | head -1)
+            if [ -z "$evolution_pid" ]; then
+                evolution_pid=$(pgrep -f "evolution-api.*tsx" | head -1)
+            fi
+            if [ -n "$evolution_pid" ]; then
+                echo "$evolution_pid" > .evolution.pid
+            fi
+        fi
         echo "$evolution_pid" >> "$pids_file"
         service_names+=("Evolution API")
         service_pids+=("$evolution_pid")
         service_ports+=("$EVOLUTION_PORT")
-        service_urls+=("http://localhost:$EVOLUTION_PORT/")
+        service_urls+=("http://localhost:$EVOLUTION_PORT/manager/")
         service_logfiles+=("logs/evolution.log")
     fi
     
@@ -693,7 +719,7 @@ show_status() {
     
     # Check Evolution API
     local evolution_status
-    evolution_status=$(check_url "http://localhost:$EVOLUTION_PORT/" 2)
+    evolution_status=$(check_url "http://localhost:$EVOLUTION_PORT/manager/" 2)
     if [ "$evolution_status" = "200" ]; then
         echo -e "    ${CHECK} Evolution API    ${GREEN}running${NC}   http://localhost:$EVOLUTION_PORT"
     else

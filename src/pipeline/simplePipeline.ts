@@ -72,8 +72,6 @@ export async function processMessageSimple(message: StoredMessage): Promise<Stor
       heuristic_passed: null,
       heuristic_score: null,
       heuristic_signals: null,
-      classification_type: null,
-      classification_confidence: null,
       extraction_success: null,
       extraction_event_id: null,
       pipeline_completed: false,

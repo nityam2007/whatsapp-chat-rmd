@@ -6,7 +6,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { IndexFlatIP } from 'faiss-node';
+import faiss from 'faiss-node';
 import { VectorStore, VectorSearchResult } from '../types/index.js';
 import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
@@ -17,7 +17,7 @@ const INDEX_FILENAME = 'faiss.index';
 const MAPPING_FILENAME = 'faiss_map.json';
 
 // State
-let index: IndexFlatIP | null = null;
+let index: faiss.IndexFlatIP | null = null;
 let ids: string[] = []; // Maps FAISS internal ID (index) to our string ID (eventId/messageId)
 let initialized = false;
 
@@ -50,7 +50,7 @@ export function initVectorStore(): void {
   // Load or Create Index
   if (fs.existsSync(indexPath)) {
     try {
-      index = IndexFlatIP.read(indexPath);
+      index = faiss.IndexFlatIP.read(indexPath);
       
        // Basic validation
        if (index && index.getDimension() !== DIMENSIONS) {
@@ -58,19 +58,19 @@ export function initVectorStore(): void {
           expected: DIMENSIONS,
           actual: index.getDimension()
         });
-        index = new IndexFlatIP(DIMENSIONS);
+        index = new faiss.IndexFlatIP(DIMENSIONS);
         ids = []; // Reset mapping if index is recreated
       } else if (index) {
         logger.info('Loaded FAISS index', { ntotal: index.ntotal(), expected: ids.length });
       }
     } catch (error) {
       logger.error('Failed to load FAISS index, creating new one', { error });
-      index = new IndexFlatIP(DIMENSIONS);
+      index = new faiss.IndexFlatIP(DIMENSIONS);
       ids = [];
     }
   } else {
     logger.info('Creating new FAISS index', { dimensions: DIMENSIONS });
-    index = new IndexFlatIP(DIMENSIONS);
+    index = new faiss.IndexFlatIP(DIMENSIONS);
   }
 
   initialized = true;

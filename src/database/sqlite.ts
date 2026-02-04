@@ -107,6 +107,8 @@ export function initDatabase(): Database.Database {
 function runMigrations(db: Database.Database): void {
   logger.info('Running database migrations');
 
+  dropLegacyTables(db);
+
   // Create contacts table (for tracking names and relationships)
   db.exec(`
     CREATE TABLE IF NOT EXISTS contacts (
@@ -142,8 +144,6 @@ function runMigrations(db: Database.Database): void {
       heuristic_passed INTEGER DEFAULT NULL,
       heuristic_score INTEGER DEFAULT NULL,
       heuristic_signals TEXT DEFAULT NULL,
-      classification_type TEXT DEFAULT NULL,
-      classification_confidence REAL DEFAULT NULL,
       extraction_success INTEGER DEFAULT NULL,
       extraction_event_id TEXT DEFAULT NULL,
       pipeline_completed INTEGER DEFAULT 0,
@@ -171,11 +171,18 @@ function runMigrations(db: Database.Database): void {
       end_time_ist TEXT,
       condition_type TEXT,
       condition_value TEXT,
-      status TEXT NOT NULL DEFAULT 'soft',
+      status TEXT NOT NULL DEFAULT 'pending',
       confidence REAL NOT NULL DEFAULT 0,
       source_message_id TEXT,
       chat_id TEXT NOT NULL,
       contact_name TEXT,
+      participants TEXT,
+      created_by TEXT,
+      context_tags TEXT,
+      location TEXT,
+      trigger_keywords TEXT,
+      proactive_triggered INTEGER DEFAULT 0,
+      proactive_trigger_count INTEGER DEFAULT 0,
       raw_extraction TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -269,8 +276,6 @@ function runMigrations(db: Database.Database): void {
   try { db.exec(`ALTER TABLE messages ADD COLUMN heuristic_passed INTEGER`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE messages ADD COLUMN heuristic_score INTEGER`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE messages ADD COLUMN heuristic_signals TEXT`); } catch { /* exists */ }
-  try { db.exec(`ALTER TABLE messages ADD COLUMN classification_type TEXT`); } catch { /* exists */ }
-  try { db.exec(`ALTER TABLE messages ADD COLUMN classification_confidence REAL`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE messages ADD COLUMN extraction_success INTEGER`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE messages ADD COLUMN extraction_event_id TEXT`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE messages ADD COLUMN pipeline_completed INTEGER DEFAULT 0`); } catch { /* exists */ }
@@ -286,164 +291,28 @@ function runMigrations(db: Database.Database): void {
   try { db.exec(`ALTER TABLE events ADD COLUMN created_by TEXT`); } catch { /* exists */ }
   
   // Proactive trigger columns - for context-based reminders
-  try { db.exec(`ALTER TABLE events ADD COLUMN context_tags TEXT`); } catch { /* exists */ }  // JSON array: ["goa", "shopping", "gift"]
-  try { db.exec(`ALTER TABLE events ADD COLUMN location TEXT`); } catch { /* exists */ }       // Primary location: "goa", "mumbai", "office"
-  try { db.exec(`ALTER TABLE events ADD COLUMN trigger_keywords TEXT`); } catch { /* exists */ } // Keywords that should trigger reminder
-  try { db.exec(`ALTER TABLE events ADD COLUMN proactive_triggered INTEGER DEFAULT 0`); } catch { /* exists */ } // Has proactive reminder been sent?
-  try { db.exec(`ALTER TABLE events ADD COLUMN proactive_trigger_count INTEGER DEFAULT 0`); } catch { /* exists */ } // How many times triggered
+  try { db.exec(`ALTER TABLE events ADD COLUMN context_tags TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE events ADD COLUMN location TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE events ADD COLUMN trigger_keywords TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE events ADD COLUMN proactive_triggered INTEGER DEFAULT 0`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE events ADD COLUMN proactive_trigger_count INTEGER DEFAULT 0`); } catch { /* exists */ }
   
   // Reminders table columns
   try { db.exec(`ALTER TABLE reminders ADD COLUMN trigger_time_ist TEXT`); } catch { /* exists */ }
 
-  // Create llm_calls table - stores ALL LLM API calls with full input/output
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS llm_calls (
-      id TEXT PRIMARY KEY,
-      message_id TEXT,
-      call_type TEXT NOT NULL,
-      model TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      prompt TEXT NOT NULL,
-      response TEXT,
-      response_parsed TEXT,
-      finish_reason TEXT,
-      tokens_prompt INTEGER DEFAULT 0,
-      tokens_completion INTEGER DEFAULT 0,
-      tokens_total INTEGER DEFAULT 0,
-      duration_ms INTEGER DEFAULT 0,
-      success INTEGER DEFAULT 1,
-      error TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_llm_calls_message_id ON llm_calls(message_id);
-    CREATE INDEX IF NOT EXISTS idx_llm_calls_call_type ON llm_calls(call_type);
-    CREATE INDEX IF NOT EXISTS idx_llm_calls_model ON llm_calls(model);
-    CREATE INDEX IF NOT EXISTS idx_llm_calls_success ON llm_calls(success);
-    CREATE INDEX IF NOT EXISTS idx_llm_calls_created_at ON llm_calls(created_at);
-  `);
-
-  // Initialize pattern learning tables (auto-learning system)
-  initPatternLearningTablesInternal(db);
-
-  // Create message_embeddings table for semantic search
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS message_embeddings (
-      id TEXT PRIMARY KEY,
-      message_id TEXT NOT NULL UNIQUE,
-      chat_id TEXT NOT NULL,
-      content TEXT NOT NULL,
-      embedding BLOB NOT NULL,
-      embedding_model TEXT DEFAULT 'text-embedding-3-small',
-      classification TEXT,
-      created_event INTEGER DEFAULT 0,
-      event_id TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (message_id) REFERENCES messages(id),
-      FOREIGN KEY (event_id) REFERENCES events(id)
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_message_embeddings_message_id ON message_embeddings(message_id);
-    CREATE INDEX IF NOT EXISTS idx_message_embeddings_chat_id ON message_embeddings(chat_id);
-    CREATE INDEX IF NOT EXISTS idx_message_embeddings_classification ON message_embeddings(classification);
-    CREATE INDEX IF NOT EXISTS idx_message_embeddings_created_event ON message_embeddings(created_event);
-  `);
-
-  // Create semantic_patterns table for pattern matching
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS semantic_patterns (
-      id TEXT PRIMARY KEY,
-      text TEXT NOT NULL,
-      embedding BLOB NOT NULL,
-      embedding_model TEXT DEFAULT 'text-embedding-3-small',
-      category TEXT NOT NULL,
-      classification TEXT NOT NULL,
-      confidence REAL DEFAULT 0.7,
-      hit_count INTEGER DEFAULT 0,
-      last_used TEXT,
-      is_seed INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_semantic_patterns_category ON semantic_patterns(category);
-    CREATE INDEX IF NOT EXISTS idx_semantic_patterns_classification ON semantic_patterns(classification);
-    CREATE INDEX IF NOT EXISTS idx_semantic_patterns_hit_count ON semantic_patterns(hit_count);
-  `);
+  try { db.exec(`UPDATE events SET status = 'pending' WHERE status IN ('soft', 'pending_confirmation')`); } catch { /* ignore */ }
 
   logger.info('Database migrations completed');
 }
 
-/**
- * Initialize pattern learning tables for the auto-learning system
- */
-function initPatternLearningTablesInternal(db: Database.Database): void {
-  // Table for logging LLM extractions
+function dropLegacyTables(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS llm_extraction_logs (
-      id TEXT PRIMARY KEY,
-      message_id TEXT NOT NULL,
-      raw_message TEXT NOT NULL,
-      normalized_message TEXT NOT NULL,
-      event_type TEXT,
-      extracted_title TEXT,
-      extracted_time TEXT,
-      extracted_date TEXT,
-      extracted_participants TEXT,
-      llm_model TEXT,
-      llm_tokens_used INTEGER DEFAULT 0,
-      llm_latency_ms INTEGER DEFAULT 0,
-      confidence REAL DEFAULT 0,
-      rule_engine_tried INTEGER DEFAULT 0,
-      rule_engine_confidence REAL DEFAULT 0,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_llm_logs_message_id ON llm_extraction_logs(message_id);
-    CREATE INDEX IF NOT EXISTS idx_llm_logs_event_type ON llm_extraction_logs(event_type);
-    CREATE INDEX IF NOT EXISTS idx_llm_logs_created_at ON llm_extraction_logs(created_at);
-    CREATE INDEX IF NOT EXISTS idx_llm_logs_confidence ON llm_extraction_logs(confidence);
-  `);
-
-  // Table for learned patterns
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS learned_patterns (
-      id TEXT PRIMARY KEY,
-      pattern_type TEXT NOT NULL,
-      regex_pattern TEXT NOT NULL UNIQUE,
-      capture_groups TEXT,
-      examples TEXT,
-      hit_count INTEGER DEFAULT 0,
-      miss_count INTEGER DEFAULT 0,
-      accuracy REAL DEFAULT 0,
-      is_active INTEGER DEFAULT 1,
-      priority INTEGER DEFAULT 50,
-      created_from_logs TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      last_validated_at TEXT,
-      last_hit_at TEXT
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_learned_patterns_type ON learned_patterns(pattern_type);
-    CREATE INDEX IF NOT EXISTS idx_learned_patterns_active ON learned_patterns(is_active);
-    CREATE INDEX IF NOT EXISTS idx_learned_patterns_accuracy ON learned_patterns(accuracy);
-    CREATE INDEX IF NOT EXISTS idx_learned_patterns_priority ON learned_patterns(priority);
-  `);
-
-  // Table for pattern learning runs
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS pattern_learning_runs (
-      id TEXT PRIMARY KEY,
-      started_at TEXT NOT NULL,
-      completed_at TEXT,
-      logs_analyzed INTEGER DEFAULT 0,
-      patterns_generated INTEGER DEFAULT 0,
-      patterns_validated INTEGER DEFAULT 0,
-      patterns_added INTEGER DEFAULT 0,
-      status TEXT DEFAULT 'running',
-      error TEXT
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_learning_runs_status ON pattern_learning_runs(status);
+    DROP TABLE IF EXISTS llm_calls;
+    DROP TABLE IF EXISTS llm_extraction_logs;
+    DROP TABLE IF EXISTS learned_patterns;
+    DROP TABLE IF EXISTS pattern_learning_runs;
+    DROP TABLE IF EXISTS semantic_patterns;
+    DROP TABLE IF EXISTS message_embeddings;
   `);
 }
 
@@ -629,7 +498,7 @@ export function getDatabase(): IDatabase {
       const stmt = db.prepare(`
         SELECT * FROM events 
         WHERE contact_name = ? 
-        AND status IN ('active', 'pending', 'soft')
+        AND status IN ('active', 'pending')
         ORDER BY created_at DESC
         LIMIT 10
       `);
@@ -1226,7 +1095,7 @@ export function getEventsForProactiveTrigger(limit: number = 100): StoredEvent[]
     SELECT e.*, m.content as source_message_content
     FROM events e
     LEFT JOIN messages m ON e.source_message_id = m.id
-    WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+    WHERE e.status IN ('pending', 'active')
     AND (e.proactive_triggered = 0 OR e.proactive_triggered IS NULL)
     AND e.archived_at IS NULL
     ORDER BY e.created_at DESC
@@ -1352,7 +1221,7 @@ export function getEventsByContext(query: ExtensionContextQuery): ContextMatchRe
       SELECT e.*, m.content as source_message_content
       FROM events e
       LEFT JOIN messages m ON e.source_message_id = m.id
-      WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+      WHERE e.status IN ('pending', 'active')
         AND e.archived_at IS NULL
         AND e.created_at >= ?
         AND (
@@ -1390,7 +1259,7 @@ export function getEventsByContext(query: ExtensionContextQuery): ContextMatchRe
         SELECT e.*, m.content as source_message_content
         FROM events e
         LEFT JOIN messages m ON e.source_message_id = m.id
-        WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+        WHERE e.status IN ('pending', 'active')
           AND e.archived_at IS NULL
           AND e.created_at >= ?
           AND (
@@ -1436,7 +1305,7 @@ export function getEventsByContext(query: ExtensionContextQuery): ContextMatchRe
         SELECT e.*, m.content as source_message_content
         FROM events e
         LEFT JOIN messages m ON e.source_message_id = m.id
-        WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+        WHERE e.status IN ('pending', 'active')
           AND e.archived_at IS NULL
           AND e.created_at >= ?
           AND (
@@ -1490,7 +1359,7 @@ export function getHotEvents(limit: number = 200): StoredEvent[] {
     SELECT e.*, m.content as source_message_content
     FROM events e
     LEFT JOIN messages m ON e.source_message_id = m.id
-    WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+    WHERE e.status IN ('pending', 'active')
       AND e.archived_at IS NULL
       AND e.created_at >= ?
     ORDER BY e.created_at DESC
@@ -1518,7 +1387,7 @@ export function getExtensionStats(): {
   
   const hotCountStmt = db.prepare(`
     SELECT COUNT(*) as count FROM events 
-    WHERE status IN ('pending', 'pending_confirmation', 'active', 'soft')
+    WHERE status IN ('pending', 'active')
       AND archived_at IS NULL
       AND created_at >= ?
   `);
@@ -1526,7 +1395,7 @@ export function getExtensionStats(): {
   
   const locationCountStmt = db.prepare(`
     SELECT COUNT(*) as count FROM events 
-    WHERE status IN ('pending', 'pending_confirmation', 'active', 'soft')
+    WHERE status IN ('pending', 'active')
       AND archived_at IS NULL
       AND created_at >= ?
       AND location IS NOT NULL AND location != ''
@@ -1535,7 +1404,7 @@ export function getExtensionStats(): {
   
   const keywordCountStmt = db.prepare(`
     SELECT COUNT(*) as count FROM events 
-    WHERE status IN ('pending', 'pending_confirmation', 'active', 'soft')
+    WHERE status IN ('pending', 'active')
       AND archived_at IS NULL
       AND created_at >= ?
       AND trigger_keywords IS NOT NULL AND trigger_keywords != '[]'
@@ -1544,7 +1413,7 @@ export function getExtensionStats(): {
   
   const avgConfStmt = db.prepare(`
     SELECT AVG(confidence) as avg FROM events 
-    WHERE status IN ('pending', 'pending_confirmation', 'active', 'soft')
+    WHERE status IN ('pending', 'active')
       AND archived_at IS NULL
       AND created_at >= ?
   `);
@@ -1568,8 +1437,6 @@ export interface EnhancedMessage extends StoredMessage {
   heuristic_passed?: boolean | null;
   heuristic_score?: number | null;
   heuristic_signals?: string[] | null;
-  classification_type?: string | null;
-  classification_confidence?: number | null;
   extraction_success?: boolean | null;
   extraction_event_id?: string | null;
   pipeline_completed?: boolean;
@@ -1587,9 +1454,8 @@ export function storeEnhancedMessage(message: EnhancedMessage): void {
     INSERT OR REPLACE INTO messages 
     (id, chat_id, sender, sender_name, content, timestamp, timestamp_ist, is_from_me, 
      message_type, processed, heuristic_passed, heuristic_score, heuristic_signals,
-     classification_type, classification_confidence, extraction_success, extraction_event_id,
-     pipeline_completed, pipeline_error, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     extraction_success, extraction_event_id, pipeline_completed, pipeline_error, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
   stmt.run(
@@ -1606,8 +1472,6 @@ export function storeEnhancedMessage(message: EnhancedMessage): void {
     message.heuristic_passed === null ? null : (message.heuristic_passed ? 1 : 0),
     message.heuristic_score ?? null,
     message.heuristic_signals ? JSON.stringify(message.heuristic_signals) : null,
-    message.classification_type ?? null,
-    message.classification_confidence ?? null,
     message.extraction_success === null ? null : (message.extraction_success ? 1 : 0),
     message.extraction_event_id ?? null,
     message.pipeline_completed ? 1 : 0,
@@ -1645,14 +1509,7 @@ export function updateMessageClassification(
   eventType: string, 
   confidence: number
 ): void {
-  const db = dbInstance || initDatabase();
-  const stmt = db.prepare(`
-    UPDATE messages 
-    SET classification_type = ?, classification_confidence = ?
-    WHERE id = ?
-  `);
-  stmt.run(eventType, confidence, messageId);
-  logger.debug('Message classification updated', { messageId, eventType, confidence });
+  logger.debug('Classification update skipped (archv2)', { messageId, eventType, confidence });
 }
 
 /**
@@ -2138,77 +1995,17 @@ export interface LLMCallLog {
  * Store an LLM API call with full input/output
  */
 export function storeLLMCall(log: LLMCallLog): string {
-  const db = dbInstance || initDatabase();
-  const id = log.id || `llm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const now = getISTTimestamp();
-  
-  const stmt = db.prepare(`
-    INSERT INTO llm_calls (
-      id, message_id, call_type, model, provider, prompt, response, 
-      response_parsed, finish_reason, tokens_prompt, tokens_completion, 
-      tokens_total, duration_ms, success, error, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  
-  stmt.run(
-    id,
-    log.message_id || null,
-    log.call_type,
-    log.model,
-    log.provider,
-    log.prompt,
-    log.response || null,
-    log.response_parsed || null,
-    log.finish_reason || null,
-    log.tokens_prompt || 0,
-    log.tokens_completion || 0,
-    log.tokens_total || 0,
-    log.duration_ms || 0,
-    log.success ? 1 : 0,
-    log.error || null,
-    now
-  );
-  
-  return id;
+  logger.debug('LLM call logging skipped (archv2)', { call_type: log.call_type, model: log.model });
+  return log.id || `llm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
  * Get recent LLM calls
  */
 export function getLLMCalls(limit: number = 50, callType?: string): LLMCallLog[] {
-  const db = dbInstance || initDatabase();
-  
-  let sql = 'SELECT * FROM llm_calls';
-  const params: unknown[] = [];
-  
-  if (callType) {
-    sql += ' WHERE call_type = ?';
-    params.push(callType);
-  }
-  
-  sql += ' ORDER BY created_at DESC LIMIT ?';
-  params.push(limit);
-  
-  const stmt = db.prepare(sql);
-  const rows = stmt.all(...params) as Record<string, unknown>[];
-  
-  return rows.map(row => ({
-    id: row.id as string,
-    message_id: row.message_id as string | undefined,
-    call_type: row.call_type as 'classification' | 'extraction' | 'other',
-    model: row.model as string,
-    provider: row.provider as string,
-    prompt: row.prompt as string,
-    response: row.response as string | undefined,
-    response_parsed: row.response_parsed as string | undefined,
-    finish_reason: row.finish_reason as string | undefined,
-    tokens_prompt: row.tokens_prompt as number,
-    tokens_completion: row.tokens_completion as number,
-    tokens_total: row.tokens_total as number,
-    duration_ms: row.duration_ms as number,
-    success: row.success === 1,
-    error: row.error as string | undefined,
-  }));
+  void limit;
+  void callType;
+  return [];
 }
 
 // ============================================================================
@@ -2345,61 +2142,8 @@ export function getLLMCallsPaginated(options: {
   success?: boolean;
   messageId?: string;
 }): { calls: (LLMCallLog & { created_at: string })[]; total: number } {
-  const db = dbInstance || initDatabase();
-  const { limit = 50, offset = 0, callType, success, messageId } = options;
-  
-  let whereClause = '1=1';
-  const params: unknown[] = [];
-  
-  if (callType) {
-    whereClause += ' AND call_type = ?';
-    params.push(callType);
-  }
-  
-  if (success !== undefined) {
-    whereClause += ' AND success = ?';
-    params.push(success ? 1 : 0);
-  }
-  
-  if (messageId) {
-    whereClause += ' AND message_id = ?';
-    params.push(messageId);
-  }
-  
-  // Get total count
-  const countStmt = db.prepare(`SELECT COUNT(*) as count FROM llm_calls WHERE ${whereClause}`);
-  const { count: total } = countStmt.get(...params) as { count: number };
-  
-  // Get calls
-  const stmt = db.prepare(`
-    SELECT * FROM llm_calls
-    WHERE ${whereClause}
-    ORDER BY created_at DESC
-    LIMIT ? OFFSET ?
-  `);
-  
-  const rows = stmt.all(...params, limit, offset) as Record<string, unknown>[];
-  
-  const calls = rows.map(row => ({
-    id: row.id as string,
-    message_id: row.message_id as string | undefined,
-    call_type: row.call_type as 'classification' | 'extraction' | 'other',
-    model: row.model as string,
-    provider: row.provider as string,
-    prompt: row.prompt as string,
-    response: row.response as string | undefined,
-    response_parsed: row.response_parsed as string | undefined,
-    finish_reason: row.finish_reason as string | undefined,
-    tokens_prompt: row.tokens_prompt as number,
-    tokens_completion: row.tokens_completion as number,
-    tokens_total: row.tokens_total as number,
-    duration_ms: row.duration_ms as number,
-    success: row.success === 1,
-    error: row.error as string | undefined,
-    created_at: row.created_at as string,
-  }));
-  
-  return { calls, total };
+  void options;
+  return { calls: [], total: 0 };
 }
 
 // ============================================================================
@@ -2415,10 +2159,9 @@ export function getMessagesWithPipelineData(options: {
   chatId?: string;
   search?: string;
   heuristicPassed?: boolean;
-  classificationTypes?: string[];
 }): { messages: EnhancedMessage[]; total: number } {
   const db = dbInstance || initDatabase();
-  const { limit = 50, offset = 0, chatId, search, heuristicPassed, classificationTypes } = options;
+  const { limit = 50, offset = 0, chatId, search, heuristicPassed } = options;
   
   let whereClause = '1=1';
   const params: unknown[] = [];
@@ -2436,11 +2179,6 @@ export function getMessagesWithPipelineData(options: {
   if (heuristicPassed !== undefined) {
     whereClause += ' AND heuristic_passed = ?';
     params.push(heuristicPassed ? 1 : 0);
-  }
-  
-  if (classificationTypes && classificationTypes.length > 0) {
-    whereClause += ` AND classification_type IN (${classificationTypes.map(() => '?').join(',')})`;
-    params.push(...classificationTypes);
   }
   
   // Get total count
@@ -2471,8 +2209,6 @@ export function getMessagesWithPipelineData(options: {
     heuristic_passed: row.heuristic_passed === null ? null : row.heuristic_passed === 1,
     heuristic_score: row.heuristic_score as number | null,
     heuristic_signals: row.heuristic_signals ? JSON.parse(row.heuristic_signals as string) : null,
-    classification_type: row.classification_type as string | null,
-    classification_confidence: row.classification_confidence as number | null,
     extraction_success: row.extraction_success === null ? null : row.extraction_success === 1,
     extraction_event_id: row.extraction_event_id as string | null,
     pipeline_completed: row.pipeline_completed === 1,
@@ -2497,18 +2233,12 @@ export function getDatabaseStats(): {
   
   const tables = [
     'contacts',
-    'messages', 
+    'messages',
     'events',
     'reminders',
     'pipeline_logs',
-    'llm_calls',
-    'llm_extraction_logs',
-    'learned_patterns',
-    'semantic_patterns',
-    'pattern_learning_runs',
     'archive_metadata',
     'push_subscriptions',
-    'message_embeddings',
   ];
   
   const stats = tables.map(tableName => {
@@ -2613,13 +2343,13 @@ export function cleanupTestData(): {
     // 3. Delete events from test contacts or with test content
     if (testContactIds.length > 0) {
       const placeholders = testContactIds.map(() => '?').join(',');
-      const result = db.prepare(`DELETE FROM events WHERE contact_id IN (${placeholders})`).run(...testContactIds);
+      const result = db.prepare(`DELETE FROM events WHERE chat_id IN (${placeholders})`).run(...testContactIds);
       deletedEvents += result.changes;
     }
     
     // Also delete events with test content patterns
-    const eventPatternQuery = `DELETE FROM events WHERE ${testPatterns.map(() => 'title LIKE ? OR description LIKE ?').join(' OR ')}`;
-    const eventParams = testPatterns.flatMap(p => [p, p]);
+    const eventPatternQuery = `DELETE FROM events WHERE ${testPatterns.map(() => 'title LIKE ?').join(' OR ')}`;
+    const eventParams = testPatterns;
     const eventResult = db.prepare(eventPatternQuery).run(...eventParams);
     deletedEvents += eventResult.changes;
     
@@ -2635,11 +2365,7 @@ export function cleanupTestData(): {
     `).run();
     deletedPipelineLogs = pipelineResult.changes;
     
-    // 6. Delete LLM calls for deleted messages
-    const llmResult = db.prepare(`
-      DELETE FROM llm_calls WHERE message_id NOT IN (SELECT id FROM messages) AND message_id IS NOT NULL
-    `).run();
-    deletedLLMCalls = llmResult.changes;
+    deletedLLMCalls = 0;
     
     // 7. Delete test contacts
     if (testContactIds.length > 0) {
@@ -2688,7 +2414,7 @@ export function deleteContactAndData(contactId: string): {
   
   try {
     // Get event IDs for this contact
-    const events = db.prepare('SELECT id FROM events WHERE contact_id = ?').all(contactId) as { id: string }[];
+    const events = db.prepare('SELECT id FROM events WHERE chat_id = ?').all(contactId) as { id: string }[];
     const eventIds = events.map(e => e.id);
     
     // Delete reminders for these events
@@ -2700,7 +2426,7 @@ export function deleteContactAndData(contactId: string): {
     }
     
     // Delete events
-    const eventResult = db.prepare('DELETE FROM events WHERE contact_id = ?').run(contactId);
+    const eventResult = db.prepare('DELETE FROM events WHERE chat_id = ?').run(contactId);
     const deletedEvents = eventResult.changes;
     
     // Delete messages
@@ -2751,60 +2477,21 @@ export function storeMessageEmbedding(
   createdEvent: boolean = false,
   eventId?: string
 ): void {
-  const db = dbInstance || initDatabase();
-  const id = `emb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const now = getISTTimestamp();
-  
-  // Convert embedding array to Buffer for storage
-  const embeddingBuffer = Buffer.from(new Float32Array(embedding).buffer);
-  
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO message_embeddings 
-    (id, message_id, chat_id, content, embedding, classification, created_event, event_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  
-  stmt.run(
-    id,
-    messageId,
-    chatId,
-    content,
-    embeddingBuffer,
-    classification || null,
-    createdEvent ? 1 : 0,
-    eventId || null,
-    now
-  );
-  
-  logger.debug('Message embedding stored', { messageId, classification, createdEvent });
+  void messageId;
+  void chatId;
+  void content;
+  void embedding;
+  void classification;
+  void createdEvent;
+  void eventId;
 }
 
 /**
  * Get a message embedding by message ID
  */
 export function getMessageEmbedding(messageId: string): StoredMessageEmbedding | null {
-  const db = dbInstance || initDatabase();
-  const stmt = db.prepare('SELECT * FROM message_embeddings WHERE message_id = ?');
-  const row = stmt.get(messageId) as Record<string, unknown> | undefined;
-  
-  if (!row) return null;
-  
-  // Convert Buffer back to number array
-  const embeddingBuffer = row.embedding as Buffer;
-  const embedding = Array.from(new Float32Array(embeddingBuffer.buffer, embeddingBuffer.byteOffset, embeddingBuffer.length / 4));
-  
-  return {
-    id: row.id as string,
-    message_id: row.message_id as string,
-    chat_id: row.chat_id as string,
-    content: row.content as string,
-    embedding,
-    embedding_model: row.embedding_model as string,
-    classification: row.classification as string | undefined,
-    created_event: row.created_event === 1,
-    event_id: row.event_id as string | undefined,
-    created_at: row.created_at as string,
-  };
+  void messageId;
+  return null;
 }
 
 /**
@@ -2816,62 +2503,16 @@ export function getAllMessageEmbeddings(options?: {
   limit?: number;
   chatId?: string;
 }): StoredMessageEmbedding[] {
-  const db = dbInstance || initDatabase();
-  const { onlyWithEvents, limit = 1000, chatId } = options || {};
-  
-  let whereClause = '1=1';
-  const params: unknown[] = [];
-  
-  if (onlyWithEvents) {
-    whereClause += ' AND created_event = 1';
-  }
-  
-  if (chatId) {
-    whereClause += ' AND chat_id = ?';
-    params.push(chatId);
-  }
-  
-  const stmt = db.prepare(`
-    SELECT * FROM message_embeddings 
-    WHERE ${whereClause}
-    ORDER BY created_at DESC 
-    LIMIT ?
-  `);
-  
-  const rows = stmt.all(...params, limit) as Record<string, unknown>[];
-  
-  return rows.map(row => {
-    const embeddingBuffer = row.embedding as Buffer;
-    const embedding = Array.from(new Float32Array(embeddingBuffer.buffer, embeddingBuffer.byteOffset, embeddingBuffer.length / 4));
-    
-    return {
-      id: row.id as string,
-      message_id: row.message_id as string,
-      chat_id: row.chat_id as string,
-      content: row.content as string,
-      embedding,
-      embedding_model: row.embedding_model as string,
-      classification: row.classification as string | undefined,
-      created_event: row.created_event === 1,
-      event_id: row.event_id as string | undefined,
-      created_at: row.created_at as string,
-    };
-  });
+  void options;
+  return [];
 }
 
 /**
  * Update message embedding with event creation result
  */
 export function updateMessageEmbeddingEvent(messageId: string, eventId: string): void {
-  const db = dbInstance || initDatabase();
-  
-  db.prepare(`
-    UPDATE message_embeddings 
-    SET created_event = 1, event_id = ?
-    WHERE message_id = ?
-  `).run(eventId, messageId);
-  
-  logger.debug('Message embedding updated with event', { messageId, eventId });
+  void messageId;
+  void eventId;
 }
 
 /**
@@ -2882,24 +2523,7 @@ export function getEmbeddingStats(): {
   withEvents: number;
   byClassification: Record<string, number>;
 } {
-  const db = dbInstance || initDatabase();
-  
-  const total = (db.prepare('SELECT COUNT(*) as count FROM message_embeddings').get() as { count: number }).count;
-  const withEvents = (db.prepare('SELECT COUNT(*) as count FROM message_embeddings WHERE created_event = 1').get() as { count: number }).count;
-  
-  const byClassification: Record<string, number> = {};
-  const classRows = db.prepare(`
-    SELECT classification, COUNT(*) as count 
-    FROM message_embeddings 
-    WHERE classification IS NOT NULL
-    GROUP BY classification
-  `).all() as { classification: string; count: number }[];
-  
-  for (const row of classRows) {
-    byClassification[row.classification] = row.count;
-  }
-  
-  return { total, withEvents, byClassification };
+  return { total: 0, withEvents: 0, byClassification: {} };
 }
 
 // ============================================================================
@@ -2931,88 +2555,43 @@ export function storeSemanticPattern(
   confidence: number = 0.7,
   isSeed: boolean = false
 ): string {
-  const db = dbInstance || initDatabase();
-  const id = `pat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const now = getISTTimestamp();
-  
-  const embeddingBuffer = Buffer.from(new Float32Array(embedding).buffer);
-  
-  const stmt = db.prepare(`
-    INSERT INTO semantic_patterns 
-    (id, text, embedding, category, classification, confidence, hit_count, last_used, is_seed, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  
-  stmt.run(id, text, embeddingBuffer, category, classification, confidence, 0, now, isSeed ? 1 : 0, now);
-  
-  logger.debug('Semantic pattern stored', { id, category, classification });
-  return id;
+  void text;
+  void embedding;
+  void category;
+  void classification;
+  void confidence;
+  void isSeed;
+  return `pat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
  * Get all semantic patterns
  */
 export function getAllSemanticPatterns(): StoredSemanticPattern[] {
-  const db = dbInstance || initDatabase();
-  const rows = db.prepare('SELECT * FROM semantic_patterns ORDER BY hit_count DESC').all() as Record<string, unknown>[];
-  
-  return rows.map(row => {
-    const embeddingBuffer = row.embedding as Buffer;
-    const embedding = Array.from(new Float32Array(embeddingBuffer.buffer, embeddingBuffer.byteOffset, embeddingBuffer.length / 4));
-    
-    return {
-      id: row.id as string,
-      text: row.text as string,
-      embedding,
-      embedding_model: row.embedding_model as string,
-      category: row.category as string,
-      classification: row.classification as string,
-      confidence: row.confidence as number,
-      hit_count: row.hit_count as number,
-      last_used: row.last_used as string | undefined,
-      is_seed: row.is_seed === 1,
-      created_at: row.created_at as string,
-    };
-  });
+  return [];
 }
 
 /**
  * Update pattern hit count
  */
 export function updatePatternHitCount(patternId: string): void {
-  const db = dbInstance || initDatabase();
-  const now = getISTTimestamp();
-  
-  db.prepare(`
-    UPDATE semantic_patterns 
-    SET hit_count = hit_count + 1, last_used = ?
-    WHERE id = ?
-  `).run(now, patternId);
+  void patternId;
 }
 
 /**
  * Update pattern confidence
  */
 export function updatePatternConfidence(patternId: string, confidence: number): void {
-  const db = dbInstance || initDatabase();
-  
-  db.prepare('UPDATE semantic_patterns SET confidence = ? WHERE id = ?').run(confidence, patternId);
+  void patternId;
+  void confidence;
 }
 
 /**
  * Clean up old unused patterns
  */
 export function cleanupOldPatterns(maxAgeDays: number = 30): number {
-  const db = dbInstance || initDatabase();
-  const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
-  
-  const result = db.prepare(`
-    DELETE FROM semantic_patterns 
-    WHERE is_seed = 0 AND hit_count = 0 AND created_at < ?
-  `).run(cutoff);
-  
-  logger.info('Cleaned up old patterns', { deleted: result.changes });
-  return result.changes;
+  void maxAgeDays;
+  return 0;
 }
 
 /**
@@ -3026,58 +2605,14 @@ export function getSemanticPatternStats(): {
   byClassification: Record<string, number>;
   topPatterns: Array<{ text: string; category: string; hit_count: number }>;
 } {
-  const db = dbInstance || initDatabase();
-  
-  // Check if table exists first
-  const tableExists = db.prepare(`
-    SELECT name FROM sqlite_master WHERE type='table' AND name='semantic_patterns'
-  `).get();
-  
-  if (!tableExists) {
-    return {
-      total: 0,
-      seedPatterns: 0,
-      learnedPatterns: 0,
-      byCategory: {},
-      byClassification: {},
-      topPatterns: [],
-    };
-  }
-  
-  const total = (db.prepare('SELECT COUNT(*) as count FROM semantic_patterns').get() as { count: number }).count;
-  const seedPatterns = (db.prepare('SELECT COUNT(*) as count FROM semantic_patterns WHERE is_seed = 1').get() as { count: number }).count;
-  const learnedPatterns = total - seedPatterns;
-  
-  const byCategory: Record<string, number> = {};
-  const catRows = db.prepare(`
-    SELECT category, COUNT(*) as count 
-    FROM semantic_patterns 
-    GROUP BY category
-  `).all() as { category: string; count: number }[];
-  
-  for (const row of catRows) {
-    byCategory[row.category] = row.count;
-  }
-  
-  const byClassification: Record<string, number> = {};
-  const classRows = db.prepare(`
-    SELECT classification, COUNT(*) as count 
-    FROM semantic_patterns 
-    GROUP BY classification
-  `).all() as { classification: string; count: number }[];
-  
-  for (const row of classRows) {
-    byClassification[row.classification] = row.count;
-  }
-  
-  const topPatterns = db.prepare(`
-    SELECT text, category, hit_count 
-    FROM semantic_patterns 
-    ORDER BY hit_count DESC 
-    LIMIT 10
-  `).all() as Array<{ text: string; category: string; hit_count: number }>;
-  
-  return { total, seedPatterns, learnedPatterns, byCategory, byClassification, topPatterns };
+  return {
+    total: 0,
+    seedPatterns: 0,
+    learnedPatterns: 0,
+    byCategory: {},
+    byClassification: {},
+    topPatterns: [],
+  };
 }
 
 export default { 

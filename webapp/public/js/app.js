@@ -9,10 +9,7 @@ const PAGE_SIZE = 30;
 // State
 const currentPage = {
   events: 0,
-  messages: 0,
-  reminders: 0,
-  llmCalls: 0,
-  pipelineLogs: 0
+  messages: 0
 };
 
 // Push notifications state
@@ -31,7 +28,6 @@ window.addEventListener('load', async () => {
   
   // Load initial data
   refreshDashboard();
-  loadAllLogFiles();
   checkNotificationStatus();
 });
 
@@ -50,16 +46,8 @@ function showPage(page) {
   // Load page data
   switch(page) {
     case 'dashboard': refreshDashboard(); break;
-    case 'database': loadDatabaseStats(); break;
     case 'events': loadEvents(); break;
     case 'messages': loadMessages(); break;
-    case 'contacts': loadContacts(); break;
-    case 'reminders': loadReminders(); break;
-    case 'llm-calls': loadLLMCalls(); break;
-    case 'pipeline-logs': loadPipelineLogs(); break;
-    case 'pipeline-live': loadRecentPipeline(); break;
-    case 'metrics': loadMetrics(); break;
-    case 'learning': loadLearningStats(); break;
   }
 }
 
@@ -69,22 +57,13 @@ function showPage(page) {
 
 async function refreshDashboard() {
   try {
-    const [dash, db] = await Promise.all([
-      fetchDashboardStats(),
-      fetchDatabaseStats()
-    ]);
+    const dash = await fetchDashboardStats();
     
     // Update stats
     document.getElementById('stat-total-messages').textContent = dash.messages?.total || 0;
     document.getElementById('stat-total-events').textContent = dash.events?.total || 0;
-    document.getElementById('stat-pending').textContent = (dash.events?.pending || 0) + (dash.events?.pending_confirmation || 0);
-    document.getElementById('stat-contacts').textContent = dash.topContacts?.length || 0;
-    document.getElementById('stat-db-size').textContent = formatBytes(db.totalSize || 0);
+    document.getElementById('stat-pending').textContent = dash.events?.pending || 0;
     document.getElementById('nav-events-count').textContent = dash.events?.pending || 0;
-    
-    // LLM calls count
-    const llmTable = db.tables?.find(t => t.name === 'llm_calls');
-    document.getElementById('stat-llm-calls').textContent = llmTable?.count || 0;
     
     // Last updated
     document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
@@ -104,76 +83,21 @@ async function refreshDashboard() {
       upcomingEl.innerHTML = '<div class="empty-state"><p>No upcoming events</p></div>';
     }
     
-    // DB tables
-    const tablesEl = document.getElementById('db-tables-list');
-    if (db.tables?.length > 0) {
-      tablesEl.innerHTML = db.tables.map(t => `
-        <tr><td>${t.name}</td><td class="num">${t.count.toLocaleString()}</td></tr>
-      `).join('');
-    }
-    
   } catch (error) {
     console.error('Dashboard load failed:', error);
   }
 }
 
-// ============================================
-// Database Page
-// ============================================
-
-async function loadDatabaseStats() {
-  try {
-    const data = await fetchDatabaseStats();
-    
-    // Stats cards
-    const statsEl = document.getElementById('db-stats-cards');
-    statsEl.innerHTML = `
-      <div class="stat-card"><div class="label">Total Size</div><div class="value">${formatBytes(data.totalSize)}</div></div>
-      <div class="stat-card info"><div class="label">Tables</div><div class="value">${data.tables?.length || 0}</div></div>
-      <div class="stat-card success"><div class="label">Total Rows</div><div class="value">${data.tables?.reduce((s,t) => s + t.count, 0).toLocaleString() || 0}</div></div>
-    `;
-    
-    // Full table list
-    const tablesEl = document.getElementById('db-full-tables');
-    tablesEl.innerHTML = data.tables?.map(t => `
-      <tr>
-        <td><code>${t.name}</code></td>
-        <td class="num">${t.count.toLocaleString()}</td>
-        <td>${t.count > 0 ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-soft">Empty</span>'}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="3">No data</td></tr>';
-    
-  } catch (error) {
-    console.error('DB stats load failed:', error);
+function runQuickSearch() {
+  const input = document.getElementById('quick-search');
+  if (!input) return;
+  const query = input.value.trim();
+  showPage('messages');
+  const searchEl = document.getElementById('messages-search');
+  if (searchEl) {
+    searchEl.value = query;
   }
-}
-
-async function cleanupTestData() {
-  if (!confirm('This will delete ALL test/fake/demo data including:\n- Contacts with "test", "fake", "demo", "sample" in name/ID\n- Related messages, events, and reminders\n\nContinue?')) {
-    return;
-  }
-  
-  try {
-    const data = await cleanupTestDataApi();
-    
-    if (data.success) {
-      const summary = `Cleaned up:
-- ${data.deletedMessages} messages
-- ${data.deletedEvents} events
-- ${data.deletedContacts} contacts
-- ${data.deletedReminders} reminders
-- ${data.deletedPipelineLogs} pipeline logs
-- ${data.deletedLLMCalls} LLM calls`;
-      
-      showModal('Cleanup Complete', `<pre style="font-size:14px;">${summary}</pre>`);
-      loadDatabaseStats();
-    } else {
-      showToast(data.error || 'Cleanup failed', 'error');
-    }
-  } catch (error) {
-    console.error('Cleanup failed:', error);
-    showToast('Cleanup failed', 'error');
-  }
+  loadMessages(0);
 }
 
 // ============================================
@@ -201,7 +125,7 @@ async function loadEvents(page = 0) {
         <td><span class="badge badge-${e.status}">${e.status}</span></td>
         <td class="num">${Math.round((e.confidence || 0) * 100)}%</td>
         <td>
-          ${e.status === 'pending' || e.status === 'pending_confirmation' || e.status === 'soft' ? `
+          ${e.status === 'pending' ? `
             <button class="btn btn-sm btn-success" onclick="handleEventAction('${e.id}','accept')">Accept</button>
             <button class="btn btn-sm btn-danger" onclick="handleEventAction('${e.id}','decline')">Decline</button>
           ` : ''}
@@ -259,14 +183,12 @@ async function loadMessages(page = 0) {
   currentPage.messages = page;
   const search = document.getElementById('messages-search').value;
   const heuristic = document.getElementById('messages-heuristic-filter').value;
-  const classification = document.getElementById('messages-classification-filter').value;
   
   try {
     const data = await fetchMessages({
       offset: page * PAGE_SIZE,
       search,
-      heuristicPassed: heuristic,
-      classificationTypes: classification
+      heuristicPassed: heuristic
     });
     
     const tbody = document.getElementById('messages-table');
@@ -276,10 +198,9 @@ async function loadMessages(page = 0) {
         <td class="truncate-sm">${escapeHtml(m.sender?.split('@')[0] || 'Unknown')}</td>
         <td class="truncate" title="${escapeHtml(m.content)}">${escapeHtml(m.content?.substring(0, 60) || '')}</td>
         <td>${m.heuristic_passed === null ? '-' : m.heuristic_passed ? '<span class="text-success">Pass</span>' : '<span class="text-danger">Fail</span>'}</td>
-        <td>${m.classification_type ? `<span class="badge badge-${m.classification_type === 'irrelevant' ? 'soft' : 'classification'}">${m.classification_type}</span>` : '-'}</td>
         <td>${m.extraction_event_id ? '<span class="text-success">Yes</span>' : '-'}</td>
       </tr>
-    `).join('') || '<tr><td colspan="6" class="empty-state">No messages found</td></tr>';
+    `).join('') || '<tr><td colspan="5" class="empty-state">No messages found</td></tr>';
     
     renderPagination('messages-pagination', data.total, page, 'loadMessages');
   } catch (error) {
@@ -287,430 +208,6 @@ async function loadMessages(page = 0) {
   }
 }
 
-// ============================================
-// Contacts Page
-// ============================================
-
-async function loadContacts() {
-  try {
-    const data = await fetchContacts();
-    
-    let contacts = data.contacts || [];
-    
-    // Apply filters
-    const filterType = document.getElementById('contacts-filter').value;
-    const searchTerm = document.getElementById('contacts-search').value.toLowerCase();
-    
-    if (filterType === 'users') {
-      contacts = contacts.filter(c => !c.is_group);
-    } else if (filterType === 'groups') {
-      contacts = contacts.filter(c => c.is_group);
-    }
-    
-    if (searchTerm) {
-      contacts = contacts.filter(c => 
-        c.name?.toLowerCase().includes(searchTerm) || 
-        c.phone?.toLowerCase().includes(searchTerm)
-      );
-    }
-    
-    // Calculate stats
-    const totalContacts = data.contacts?.length || 0;
-    const totalUsers = data.contacts?.filter(c => !c.is_group).length || 0;
-    const totalGroups = data.contacts?.filter(c => c.is_group).length || 0;
-    const totalMessages = data.contacts?.reduce((sum, c) => sum + (c.message_count || 0), 0) || 0;
-    
-    document.getElementById('contacts-stats').innerHTML = 
-      `Total: ${totalContacts} contacts (${totalUsers} users, ${totalGroups} groups) | ${totalMessages.toLocaleString()} messages tracked | Showing: ${contacts.length}`;
-    
-    const tbody = document.getElementById('contacts-table');
-    tbody.innerHTML = contacts.map(c => `
-      <tr>
-        <td><strong>${escapeHtml(c.name)}</strong></td>
-        <td class="mono" style="font-size:12px;">${formatPhoneNumber(c.phone)}</td>
-        <td>${c.is_group ? '<span class="badge badge-info">Group</span>' : '<span class="badge badge-soft">User</span>'}</td>
-        <td class="num"><strong>${c.message_count}</strong></td>
-        <td style="font-size:11px;white-space:nowrap;">${formatDate(c.last_seen)}</td>
-        <td style="white-space:nowrap;">
-          <button class="btn btn-sm" onclick="viewContactEvents('${escapeHtml(c.name)}')" title="View events">Events</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteContact('${escapeHtml(c.id)}', '${escapeHtml(c.name)}')" title="Delete contact and data">Delete</button>
-        </td>
-      </tr>
-    `).join('') || '<tr><td colspan="6" class="empty-state">No contacts</td></tr>';
-  } catch (error) {
-    console.error('Contacts load failed:', error);
-  }
-}
-
-async function viewContactEvents(name) {
-  try {
-    const data = await fetchContactEvents(name);
-    
-    let content = `<h3>Events for: ${escapeHtml(name)}</h3>`;
-    if (data.events && data.events.length > 0) {
-      content += `<p>Found ${data.events.length} events:</p>`;
-      content += '<table style="width:100%;font-size:13px;"><thead><tr><th>Title</th><th>Date/Time</th><th>Status</th></tr></thead><tbody>';
-      data.events.forEach(e => {
-        content += `<tr>
-          <td>${escapeHtml(e.title)}</td>
-          <td style="white-space:nowrap;">${e.datetime_ist || e.datetime || '-'}</td>
-          <td><span class="badge badge-${e.status === 'active' ? 'success' : e.status === 'declined' ? 'danger' : 'soft'}">${e.status}</span></td>
-        </tr>`;
-      });
-      content += '</tbody></table>';
-    } else {
-      content += '<p class="empty-state">No events found for this contact.</p>';
-    }
-    
-    showModal('Contact Events', content);
-  } catch (error) {
-    console.error('Failed to load contact events:', error);
-    showToast('Failed to load events', 'error');
-  }
-}
-
-async function deleteContact(contactId, contactName) {
-  if (!confirm(`Are you sure you want to delete "${contactName}" and all related messages, events, and reminders?`)) {
-    return;
-  }
-  
-  try {
-    const data = await deleteContactById(contactId);
-    
-    if (data.success) {
-      showToast(`Deleted: ${data.deletedMessages} messages, ${data.deletedEvents} events, ${data.deletedReminders} reminders`, 'success');
-      loadContacts();
-    } else {
-      showToast(data.error || 'Failed to delete contact', 'error');
-    }
-  } catch (error) {
-    console.error('Failed to delete contact:', error);
-    showToast('Failed to delete contact', 'error');
-  }
-}
-
-// ============================================
-// Reminders Page
-// ============================================
-
-async function loadReminders(page = 0) {
-  currentPage.reminders = page;
-  const sent = document.getElementById('reminders-filter').value;
-  
-  try {
-    const data = await fetchReminders({
-      offset: page * PAGE_SIZE,
-      sent
-    });
-    
-    const tbody = document.getElementById('reminders-table');
-    tbody.innerHTML = data.reminders?.map(r => `
-      <tr>
-        <td class="mono truncate-sm" title="${r.id}">${r.id?.substring(0, 12)}...</td>
-        <td class="truncate">${escapeHtml(r.event_title || r.event_id)}</td>
-        <td style="white-space:nowrap;">${r.trigger_time_ist || r.trigger_time}</td>
-        <td>${r.sent ? '<span class="badge badge-success">Sent</span>' : '<span class="badge badge-warning">Pending</span>'}</td>
-        <td style="font-size:11px;">${formatDate(r.created_at)}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="5" class="empty-state">No reminders</td></tr>';
-    
-    renderPagination('reminders-pagination', data.total, page, 'loadReminders');
-  } catch (error) {
-    console.error('Reminders load failed:', error);
-  }
-}
-
-// ============================================
-// LLM Calls Page
-// ============================================
-
-async function loadLLMCalls(page = 0) {
-  currentPage.llmCalls = page;
-  const type = document.getElementById('llm-type-filter').value;
-  const success = document.getElementById('llm-success-filter').value;
-  
-  try {
-    const data = await fetchLLMCalls({
-      offset: page * PAGE_SIZE,
-      type,
-      success
-    });
-    
-    const tbody = document.getElementById('llm-calls-table');
-    tbody.innerHTML = data.calls?.map(c => `
-      <tr>
-        <td style="white-space:nowrap;font-size:11px;">${formatDate(c.created_at)}</td>
-        <td><span class="badge badge-${c.call_type}">${c.call_type}</span></td>
-        <td class="truncate-sm">${c.model}</td>
-        <td class="num">${c.tokens_total || 0}</td>
-        <td class="num">${c.duration_ms || 0}ms</td>
-        <td>${c.success ? '<span class="text-success">OK</span>' : '<span class="text-danger">Fail</span>'}</td>
-        <td><button class="btn btn-sm btn-outline" onclick="viewLLMCall('${c.id}')">View</button></td>
-      </tr>
-    `).join('') || '<tr><td colspan="7" class="empty-state">No LLM calls</td></tr>';
-    
-    renderPagination('llm-calls-pagination', data.total, page, 'loadLLMCalls');
-  } catch (error) {
-    console.error('LLM calls load failed:', error);
-  }
-}
-
-function viewLLMCall(id) {
-  showModal('LLM Call Details', `<p>Call ID: ${id}</p><p class="text-muted">Full details would be shown here including prompt and response.</p>`);
-}
-
-// ============================================
-// Pipeline Logs Page
-// ============================================
-
-async function loadPipelineLogs(page = 0) {
-  currentPage.pipelineLogs = page;
-  const stage = document.getElementById('pipeline-stage-filter').value;
-  
-  try {
-    const data = await fetchPipelineLogs({
-      offset: page * PAGE_SIZE,
-      stage
-    });
-    
-    const tbody = document.getElementById('pipeline-logs-table');
-    tbody.innerHTML = data.logs?.map(l => `
-      <tr>
-        <td style="white-space:nowrap;font-size:11px;">${formatDate(l.created_at)}</td>
-        <td class="mono truncate-sm" title="${l.message_id}">${l.message_id?.substring(0, 12)}...</td>
-        <td><span class="badge badge-${l.stage}">${l.stage}</span></td>
-        <td>${l.status === 'success' || l.status === 'passed' ? '<span class="text-success">OK</span>' : l.status === 'error' || l.status === 'failed' ? '<span class="text-danger">Fail</span>' : l.status}</td>
-        <td class="num">${l.duration_ms || '-'}</td>
-        <td>${l.data ? '<button class="btn btn-sm btn-outline" onclick="viewPipelineData(this)" data-json=\'' + escapeAttr(JSON.stringify(l.data)) + '\'>View</button>' : '-'}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="6" class="empty-state">No pipeline logs</td></tr>';
-    
-    renderPagination('pipeline-logs-pagination', data.total, page, 'loadPipelineLogs');
-  } catch (error) {
-    console.error('Pipeline logs load failed:', error);
-  }
-}
-
-function viewPipelineData(btn) {
-  const data = JSON.parse(btn.dataset.json);
-  showModal('Pipeline Data', `<div class="code-block">${escapeHtml(JSON.stringify(data, null, 2))}</div>`);
-}
-
-// ============================================
-// Metrics Page
-// ============================================
-
-async function loadMetrics() {
-  try {
-    const data = await fetchMetrics();
-    const s = data.summary || {};
-    
-    const statsEl = document.getElementById('metrics-stats');
-    statsEl.innerHTML = `
-      <div class="stat-card"><div class="label">Uptime</div><div class="value">${s.uptimeHours || 0}h</div></div>
-      <div class="stat-card success"><div class="label">Messages</div><div class="value">${s.messagesProcessed || 0}</div></div>
-      <div class="stat-card info"><div class="label">Events</div><div class="value">${s.eventsCreated || 0}</div></div>
-      <div class="stat-card warning"><div class="label">Avg Latency</div><div class="value">${s.avgLatencyMs || 0}ms</div></div>
-      <div class="stat-card danger"><div class="label">Errors</div><div class="value">${s.errors || 0}</div></div>
-    `;
-    
-    const detailEl = document.getElementById('metrics-detail');
-    detailEl.innerHTML = Object.entries(s).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
-  } catch (error) {
-    console.error('Metrics load failed:', error);
-  }
-}
-
-// ============================================
-// Log Files Page
-// ============================================
-
-async function loadAllLogFiles() {
-  try {
-    const data = await fetchLogFilesList();
-    
-    const select = document.getElementById('log-file-select');
-    select.innerHTML = '<option value="">Select log file...</option>' + 
-      data.logs?.map(l => `<option value="${l.path}">${l.name} (${formatBytes(l.size)})</option>`).join('');
-  } catch (error) {
-    console.error('Log files list failed:', error);
-  }
-}
-
-async function loadLogFile() {
-  const path = document.getElementById('log-file-select').value;
-  const lines = document.getElementById('log-lines').value || 100;
-  
-  if (!path) return;
-  
-  try {
-    const data = await fetchLogFile(path, lines);
-    
-    document.getElementById('log-file-name').textContent = path;
-    document.getElementById('log-file-info').textContent = `${data.count || 0} lines`;
-    
-    const viewer = document.getElementById('log-viewer');
-    const entries = data.entries || [];
-    viewer.innerHTML = entries.length > 0 
-      ? entries.map(e => `<div class="log-entry">${escapeHtml(e)}</div>`).join('')
-      : '<div class="empty-state"><p>Log file is empty</p></div>';
-    
-    // Scroll to bottom
-    viewer.scrollTop = viewer.scrollHeight;
-  } catch (error) {
-    console.error('Log file load failed:', error);
-    showToast('Failed to load log file', 'error');
-  }
-}
-
-// ============================================
-// Pattern Learning Page
-// ============================================
-
-async function loadLearningStats() {
-  try {
-    const [stats, patterns] = await Promise.all([
-      fetchLearningStats(),
-      fetchPatterns()
-    ]);
-    
-    const statsEl = document.getElementById('learning-stats');
-    statsEl.innerHTML = `
-      <div class="stat-card"><div class="label">Total Patterns</div><div class="value">${patterns.count || 0}</div></div>
-      <div class="stat-card success"><div class="label">Active</div><div class="value">${patterns.patterns?.filter(p => p.is_active).length || 0}</div></div>
-      <div class="stat-card info"><div class="label">Loaded in Engine</div><div class="value">${stats.loadedPatterns?.total || 0}</div></div>
-    `;
-    
-    const tbody = document.getElementById('patterns-table');
-    tbody.innerHTML = patterns.patterns?.map(p => `
-      <tr>
-        <td>${p.pattern_type}</td>
-        <td class="mono truncate" title="${escapeHtml(p.regex_pattern)}">${escapeHtml(p.regex_pattern?.substring(0, 40) || '')}...</td>
-        <td class="num">${p.hit_count || 0}</td>
-        <td class="num">${Math.round((p.accuracy || 0) * 100)}%</td>
-        <td>${p.is_active ? '<span class="text-success">Yes</span>' : '<span class="text-danger">No</span>'}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="5" class="empty-state">No patterns learned yet</td></tr>';
-  } catch (error) {
-    console.error('Learning stats load failed:', error);
-  }
-}
-
-// ============================================
-// Pipeline Live View
-// ============================================
-
-let liveViewInterval = null;
-let isLiveViewActive = false;
-
-async function loadRecentPipeline() {
-  try {
-    // Fetch recent pipeline logs
-    const data = await apiCall('/api/pipeline-logs?limit=50');
-    const logs = data.logs || [];
-    
-    // Group logs by message ID
-    const messageGroups = {};
-    const stageCounts = {};
-    
-    for (const log of logs) {
-      if (!messageGroups[log.message_id]) {
-        messageGroups[log.message_id] = {
-          id: log.message_id,
-          stages: [],
-          firstTime: log.created_at,
-          lastTime: log.created_at,
-        };
-      }
-      messageGroups[log.message_id].stages.push(log);
-      
-      // Count stages
-      const stage = log.stage || 'unknown';
-      stageCounts[stage] = (stageCounts[stage] || 0) + 1;
-    }
-    
-    // Update stage counts in the flow diagram
-    const stageNames = ['received', 'store', 'proactive', 'heuristic', 'classify', 'intent', 'context', 'compress', 'rules', 'llm', 'context_tag', 'route', 'learn', 'complete'];
-    for (const stage of stageNames) {
-      const countEl = document.getElementById(`stage-${stage}-count`);
-      if (countEl) {
-        countEl.textContent = stageCounts[stage] || 0;
-      }
-    }
-    
-    // Render activity list
-    const activityEl = document.getElementById('pipeline-activity-list');
-    const messages = Object.values(messageGroups).slice(0, 20);
-    
-    if (messages.length === 0) {
-      activityEl.innerHTML = '<div class="empty-state"><p>No recent pipeline activity</p></div>';
-      return;
-    }
-    
-    activityEl.innerHTML = messages.map(msg => {
-      const stages = msg.stages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-      const lastStage = stages[stages.length - 1];
-      const hasError = stages.some(s => s.status === 'error');
-      const isComplete = stages.some(s => s.stage === 'complete' || s.stage === 'routing');
-      
-      return `
-        <div class="pipeline-activity-item">
-          <div class="activity-time">${formatTime(msg.firstTime)}</div>
-          <div class="activity-content">
-            <div class="activity-message">${escapeHtml(msg.id.slice(0, 20))}...</div>
-            <div class="activity-stages">
-              ${stages.map(s => {
-                const statusClass = s.status === 'error' ? 'error' : 
-                                    s.status === 'success' ? 'success' : 'active';
-                return `<span class="activity-stage-badge ${statusClass}">${s.stage}</span>`;
-              }).join('')}
-            </div>
-            <div class="activity-result">
-              ${hasError ? '<span class="text-danger">Error occurred</span>' :
-                isComplete ? '<span class="text-success">Completed</span>' :
-                `<span class="text-warning">In progress: ${lastStage?.stage || 'unknown'}</span>`}
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-    
-  } catch (error) {
-    console.error('Pipeline live load failed:', error);
-  }
-}
-
-function toggleLiveView() {
-  if (isLiveViewActive) {
-    // Stop live view
-    if (liveViewInterval) {
-      clearInterval(liveViewInterval);
-      liveViewInterval = null;
-    }
-    isLiveViewActive = false;
-    document.getElementById('live-refresh-status').textContent = 'OFF';
-    document.getElementById('btn-toggle-live').textContent = 'Start Live';
-    document.getElementById('btn-toggle-live').classList.remove('btn-primary');
-  } else {
-    // Start live view
-    isLiveViewActive = true;
-    document.getElementById('live-refresh-status').textContent = 'ON (2s)';
-    document.getElementById('btn-toggle-live').textContent = 'Stop Live';
-    document.getElementById('btn-toggle-live').classList.add('btn-primary');
-    
-    // Initial load
-    loadRecentPipeline();
-    
-    // Set interval for refresh every 2 seconds
-    liveViewInterval = setInterval(loadRecentPipeline, 2000);
-  }
-}
-
-function formatTime(dateStr) {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
 
 // ============================================
 // Push Notifications

@@ -14,17 +14,13 @@
     <nav class="sidebar">
       <div class="logo">
         <h1>Argus</h1>
-        <span>Dashboard v0.8.1</span>
+        <span>Dashboard v1.0.0</span>
       </div>
       
       <div class="nav-section">Overview</div>
       <a class="nav-item active" data-page="dashboard">
         <svg class="icon-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         <span>Dashboard</span>
-      </a>
-      <a class="nav-item" data-page="database">
-        <svg class="icon-svg" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-        <span>Database</span>
       </a>
       
       <div class="nav-section">Data</div>
@@ -36,42 +32,6 @@
       <a class="nav-item" data-page="messages">
         <svg class="icon-svg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         <span>Messages</span>
-      </a>
-      <a class="nav-item" data-page="contacts">
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Contacts</span>
-      </a>
-      <a class="nav-item" data-page="reminders">
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-        <span>Reminders</span>
-      </a>
-      
-      <div class="nav-section">Pipeline</div>
-      <a class="nav-item" data-page="llm-calls">
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-        <span>LLM Calls</span>
-      </a>
-      <a class="nav-item" data-page="pipeline-logs">
-        <svg class="icon-svg" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        <span>Pipeline Logs</span>
-      </a>
-      <a class="nav-item" data-page="pipeline-live">
-        <svg class="icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Pipeline Live</span>
-      </a>
-      <a class="nav-item" data-page="metrics">
-        <svg class="icon-svg" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        <span>Metrics</span>
-      </a>
-      
-      <div class="nav-section">Logs</div>
-      <a class="nav-item" data-page="logs">
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span>Log Files</span>
-      </a>
-      <a class="nav-item" data-page="learning">
-        <svg class="icon-svg" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-        <span>Pattern Learning</span>
       </a>
       
       <div class="nav-section">System</div>
@@ -109,21 +69,6 @@
             <div class="value" id="stat-pending">-</div>
             <div class="sub">Awaiting action</div>
           </div>
-          <div class="stat-card purple">
-            <div class="label">LLM Calls</div>
-            <div class="value" id="stat-llm-calls">-</div>
-            <div class="sub">API requests</div>
-          </div>
-          <div class="stat-card info">
-            <div class="label">Contacts</div>
-            <div class="value" id="stat-contacts">-</div>
-            <div class="sub">Unique chats</div>
-          </div>
-          <div class="stat-card">
-            <div class="label">DB Size</div>
-            <div class="value" id="stat-db-size">-</div>
-            <div class="sub">Total storage</div>
-          </div>
         </div>
         
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -139,40 +84,19 @@
           
           <div class="card">
             <div class="card-header">
-              <h3>Database Tables</h3>
+              <h3>Quick Search</h3>
             </div>
             <div class="card-body">
-              <table>
-                <thead><tr><th>Table</th><th style="text-align:right">Rows</th></tr></thead>
-                <tbody id="db-tables-list"><tr><td colspan="2">Loading...</td></tr></tbody>
-              </table>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <input type="text" id="quick-search" placeholder="Search messages..." style="flex:1;" onkeyup="if(event.key==='Enter')runQuickSearch()">
+                <button class="btn btn-outline" onclick="runQuickSearch()">Search</button>
+              </div>
+              <p class="text-muted" style="margin-top:8px;">Jumps to Messages with your search term.</p>
             </div>
           </div>
         </div>
       </section>
       
-      <!-- Database Page -->
-      <section id="page-database" class="page">
-        <div class="header">
-          <h2>Database Overview</h2>
-          <div class="filters">
-            <button class="btn btn-danger" onclick="cleanupTestData()" title="Remove test/fake/demo data">Cleanup Test Data</button>
-            <button class="btn btn-outline" onclick="loadDatabaseStats()">Refresh</button>
-          </div>
-        </div>
-        
-        <div class="stats-grid" id="db-stats-cards"></div>
-        
-        <div class="card">
-          <div class="card-header"><h3>Table Statistics</h3></div>
-          <div class="card-body">
-            <table>
-              <thead><tr><th>Table Name</th><th style="text-align:right">Row Count</th><th>Status</th></tr></thead>
-              <tbody id="db-full-tables"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
       
       <!-- Events Page -->
       <section id="page-events" class="page">
@@ -183,12 +107,10 @@
             <select id="events-filter" onchange="loadEvents(0)">
               <option value="">All Status</option>
               <option value="pending">Pending</option>
-              <option value="pending_confirmation">Pending Confirmation</option>
               <option value="active">Active</option>
               <option value="completed">Completed</option>
               <option value="declined">Declined</option>
               <option value="snoozed">Snoozed</option>
-              <option value="soft">Soft</option>
             </select>
             <button class="btn btn-outline" onclick="loadEvents(0)">Search</button>
           </div>
@@ -225,14 +147,6 @@
               <option value="true">Passed Heuristic</option>
               <option value="false">Failed Heuristic</option>
             </select>
-            <select id="messages-classification-filter" onchange="loadMessages(0)">
-              <option value="">All Classifications</option>
-              <option value="reminder">Reminder</option>
-              <option value="task">Task</option>
-              <option value="meeting">Meeting</option>
-              <option value="event">Event</option>
-              <option value="irrelevant">Irrelevant</option>
-            </select>
             <button class="btn btn-outline" onclick="loadMessages(0)">Search</button>
           </div>
         </div>
@@ -246,7 +160,6 @@
                   <th>Sender</th>
                   <th>Content</th>
                   <th>Heuristic</th>
-                  <th>Classification</th>
                   <th>Event</th>
                 </tr>
               </thead>
@@ -257,344 +170,7 @@
         <div class="pagination" id="messages-pagination"></div>
       </section>
       
-      <!-- Contacts Page -->
-      <section id="page-contacts" class="page">
-        <div class="header">
-          <h2>Contacts</h2>
-          <div class="filters">
-            <select id="contacts-filter" onchange="loadContacts()">
-              <option value="">All Contacts</option>
-              <option value="users">Users Only</option>
-              <option value="groups">Groups Only</option>
-            </select>
-            <input type="text" id="contacts-search" placeholder="Search name..." onkeyup="loadContacts()" style="padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--bg-secondary);color:var(--text);">
-            <button class="btn btn-outline" onclick="loadContacts()">Refresh</button>
-          </div>
-        </div>
-        
-        <div class="card">
-          <div class="card-body table-container" style="max-height:600px;overflow:auto;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Phone / Chat ID</th>
-                  <th>Type</th>
-                  <th>Messages</th>
-                  <th>Last Active</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="contacts-table"></tbody>
-            </table>
-          </div>
-        </div>
-        <div id="contacts-stats" style="margin-top:10px;font-size:12px;color:var(--text-dim);"></div>
-      </section>
       
-      <!-- Reminders Page -->
-      <section id="page-reminders" class="page">
-        <div class="header">
-          <h2>Reminders</h2>
-          <div class="filters">
-            <select id="reminders-filter" onchange="loadReminders(0)">
-              <option value="">All Reminders</option>
-              <option value="false">Pending</option>
-              <option value="true">Sent</option>
-            </select>
-            <button class="btn btn-outline" onclick="loadReminders(0)">Refresh</button>
-          </div>
-        </div>
-        
-        <div class="card">
-          <div class="card-body table-container" style="max-height:600px;overflow:auto;">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Event</th>
-                  <th>Trigger Time</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody id="reminders-table"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="pagination" id="reminders-pagination"></div>
-      </section>
-      
-      <!-- LLM Calls Page -->
-      <section id="page-llm-calls" class="page">
-        <div class="header">
-          <h2>LLM API Calls</h2>
-          <div class="filters">
-            <select id="llm-type-filter" onchange="loadLLMCalls(0)">
-              <option value="">All Types</option>
-              <option value="classification">Classification</option>
-              <option value="extraction">Extraction</option>
-              <option value="other">Other</option>
-            </select>
-            <select id="llm-success-filter" onchange="loadLLMCalls(0)">
-              <option value="">All Results</option>
-              <option value="true">Success</option>
-              <option value="false">Failed</option>
-            </select>
-            <button class="btn btn-outline" onclick="loadLLMCalls(0)">Refresh</button>
-          </div>
-        </div>
-        
-        <div class="card">
-          <div class="card-body table-container" style="max-height:600px;overflow:auto;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Type</th>
-                  <th>Model</th>
-                  <th>Tokens</th>
-                  <th>Duration</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="llm-calls-table"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="pagination" id="llm-calls-pagination"></div>
-      </section>
-      
-      <!-- Pipeline Logs Page -->
-      <section id="page-pipeline-logs" class="page">
-        <div class="header">
-          <h2>Pipeline Logs (Database)</h2>
-          <div class="filters">
-            <select id="pipeline-stage-filter" onchange="loadPipelineLogs(0)">
-              <option value="">All Stages</option>
-              <option value="received">Received</option>
-              <option value="heuristic">Heuristic</option>
-              <option value="classification">Classification</option>
-              <option value="context">Context</option>
-              <option value="extraction">Extraction</option>
-              <option value="routing">Routing</option>
-              <option value="error">Error</option>
-            </select>
-            <button class="btn btn-outline" onclick="loadPipelineLogs(0)">Refresh</button>
-          </div>
-        </div>
-        
-        <div class="card">
-          <div class="card-body table-container" style="max-height:600px;overflow:auto;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Message ID</th>
-                  <th>Stage</th>
-                  <th>Status</th>
-                  <th>Duration</th>
-                  <th>Data</th>
-                </tr>
-              </thead>
-              <tbody id="pipeline-logs-table"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="pagination" id="pipeline-logs-pagination"></div>
-      </section>
-      
-      <!-- Pipeline Live Page -->
-      <section id="page-pipeline-live" class="page">
-        <div class="header">
-          <h2>Pipeline Live View</h2>
-          <div class="header-actions">
-            <span class="text-muted" style="font-size:12px;">Auto-refresh: <span id="live-refresh-status">OFF</span></span>
-            <button class="btn btn-outline" id="btn-toggle-live" onclick="toggleLiveView()">Start Live</button>
-            <button class="btn btn-outline" onclick="loadRecentPipeline()">Refresh</button>
-          </div>
-        </div>
-        
-        <!-- Pipeline Flow Diagram -->
-        <div class="card" style="margin-bottom:16px;">
-          <div class="card-header"><h3>Pipeline Flow (13 Stages)</h3></div>
-          <div class="card-body">
-            <div class="pipeline-flow" id="pipeline-flow">
-              <div class="pipeline-stage" data-stage="received" title="Message Received">
-                <div class="stage-icon">📥</div>
-                <div class="stage-name">Receive</div>
-                <div class="stage-count" id="stage-received-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="store" title="Store in Database">
-                <div class="stage-icon">💾</div>
-                <div class="stage-name">Store</div>
-                <div class="stage-count" id="stage-store-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="proactive" title="Proactive Trigger Check">
-                <div class="stage-icon">⚡</div>
-                <div class="stage-name">Proactive</div>
-                <div class="stage-count" id="stage-proactive-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="heuristic" title="Heuristic Gate">
-                <div class="stage-icon">🚦</div>
-                <div class="stage-name">Heuristic</div>
-                <div class="stage-count" id="stage-heuristic-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="classify" title="Classification">
-                <div class="stage-icon">🏷️</div>
-                <div class="stage-name">Classify</div>
-                <div class="stage-count" id="stage-classify-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="intent" title="Intent Detection">
-                <div class="stage-icon">🎯</div>
-                <div class="stage-name">Intent</div>
-                <div class="stage-count" id="stage-intent-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="context" title="Context Gathering">
-                <div class="stage-icon">📚</div>
-                <div class="stage-name">Context</div>
-                <div class="stage-count" id="stage-context-count">0</div>
-              </div>
-            </div>
-            <div class="pipeline-flow" id="pipeline-flow-2" style="margin-top:12px;">
-              <div class="pipeline-stage" data-stage="compress" title="Token Compression">
-                <div class="stage-icon">🗜️</div>
-                <div class="stage-name">Compress</div>
-                <div class="stage-count" id="stage-compress-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="rules" title="Rule Engine">
-                <div class="stage-icon">📋</div>
-                <div class="stage-name">Rules</div>
-                <div class="stage-count" id="stage-rules-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="llm" title="LLM Extraction">
-                <div class="stage-icon">🤖</div>
-                <div class="stage-name">LLM</div>
-                <div class="stage-count" id="stage-llm-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="context_tag" title="Context Tagging">
-                <div class="stage-icon">🔖</div>
-                <div class="stage-name">Tag</div>
-                <div class="stage-count" id="stage-context_tag-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="route" title="Event Routing">
-                <div class="stage-icon">🔀</div>
-                <div class="stage-name">Route</div>
-                <div class="stage-count" id="stage-route-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage" data-stage="learn" title="Pattern Learning">
-                <div class="stage-icon">📖</div>
-                <div class="stage-name">Learn</div>
-                <div class="stage-count" id="stage-learn-count">0</div>
-              </div>
-              <div class="pipeline-arrow">→</div>
-              <div class="pipeline-stage complete" data-stage="complete" title="Complete">
-                <div class="stage-icon">✅</div>
-                <div class="stage-name">Done</div>
-                <div class="stage-count" id="stage-complete-count">0</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Recent Pipeline Activity -->
-        <div class="card">
-          <div class="card-header">
-            <h3>Recent Pipeline Activity</h3>
-            <span class="text-muted" style="font-size:12px;">Last 20 messages</span>
-          </div>
-          <div class="card-body" style="max-height:500px;overflow:auto;">
-            <div id="pipeline-activity-list">
-              <div class="empty-state"><p>No recent activity</p></div>
-            </div>
-          </div>
-        </div>
-      </section>
-      
-      <!-- Metrics Page -->
-      <section id="page-metrics" class="page">
-        <div class="header">
-          <h2>Pipeline Metrics</h2>
-          <button class="btn btn-outline" onclick="loadMetrics()">Refresh</button>
-        </div>
-        
-        <div class="stats-grid" id="metrics-stats"></div>
-        
-        <div class="card">
-          <div class="card-header"><h3>Detailed Metrics</h3></div>
-          <div class="card-body">
-            <table>
-              <thead><tr><th>Metric</th><th>Value</th></tr></thead>
-              <tbody id="metrics-detail"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-      
-      <!-- Log Files Page -->
-      <section id="page-logs" class="page">
-        <div class="header">
-          <h2>Log Files</h2>
-          <div class="filters">
-            <select id="log-file-select" onchange="loadLogFile()">
-              <option value="">Select log file...</option>
-            </select>
-            <input type="number" id="log-lines" value="100" min="10" max="500" style="width:80px;" placeholder="Lines">
-            <button class="btn btn-outline" onclick="loadLogFile()">Load</button>
-            <button class="btn btn-outline" onclick="loadAllLogFiles()">Refresh List</button>
-          </div>
-        </div>
-        
-        <div class="card">
-          <div class="card-header">
-            <h3 id="log-file-name">No file selected</h3>
-            <span class="text-muted" id="log-file-info"></span>
-          </div>
-          <div class="card-body log-viewer" id="log-viewer">
-            <div class="empty-state"><p>Select a log file to view</p></div>
-          </div>
-        </div>
-      </section>
-      
-      <!-- Pattern Learning Page -->
-      <section id="page-learning" class="page">
-        <div class="header">
-          <h2>Pattern Learning</h2>
-          <button class="btn btn-outline" onclick="loadLearningStats()">Refresh</button>
-        </div>
-        
-        <div class="stats-grid" id="learning-stats"></div>
-        
-        <div class="card">
-          <div class="card-header"><h3>Learned Patterns</h3></div>
-          <div class="card-body table-container" style="max-height:400px;overflow:auto;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Pattern</th>
-                  <th>Hits</th>
-                  <th>Accuracy</th>
-                  <th>Active</th>
-                </tr>
-              </thead>
-              <tbody id="patterns-table"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
       
       <!-- Notifications Page -->
       <section id="page-notifications" class="page">

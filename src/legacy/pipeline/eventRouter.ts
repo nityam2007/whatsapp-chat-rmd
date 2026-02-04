@@ -65,7 +65,7 @@ const RESCHEDULE_KEYWORDS = [
  * Options for routing an event
  */
 export interface RouteEventOptions {
-  needsConfirmation?: boolean;  // If true, event will be created with pending_confirmation status
+  needsConfirmation?: boolean;  // If true, event will still be created as pending
 }
 
 /**
@@ -269,14 +269,9 @@ async function handleNewEvent(
   // =====================================
   
   // Determine event status
-  let status: EventStatus = 'soft';
-  if (needsConfirmation) {
-    // Event needs user confirmation (task without time or contextual trigger)
-    status = 'pending_confirmation';
-  } else if (extracted.start_time) {
+  let status: EventStatus = 'pending';
+  if (extracted.start_time) {
     status = 'active';
-  } else if (extracted.condition.type) {
-    status = 'pending';
   }
 
   // Create stored event
@@ -350,8 +345,8 @@ async function handleNewEvent(
     }
   }
 
-  // Send notification for pending_confirmation events with accept/decline actions
-  if (status === 'pending_confirmation') {
+  // Send notification for events that need confirmation
+  if (needsConfirmation) {
     const conditionText = extracted.condition.value 
       ? ` (${extracted.condition.value})` 
       : '';
@@ -364,7 +359,7 @@ async function handleNewEvent(
       icon: '/icons/reminder-192.png',
       data: { 
         eventId: event.id,
-        status: 'pending_confirmation',
+        status: 'pending',
         condition: extracted.condition,
         sender: sourceMessage.sender,
         requiresConfirmation: true,

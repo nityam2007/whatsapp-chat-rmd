@@ -51,12 +51,6 @@ async function fetchDashboardStats() {
   return apiCall('/api/dashboard/stats');
 }
 
-/**
- * Fetch database statistics
- */
-async function fetchDatabaseStats() {
-  return apiCall('/api/db/stats');
-}
 
 // ============================================
 // Events APIs
@@ -106,8 +100,7 @@ async function fetchMessages(params = {}) {
     limit: params.limit || PAGE_SIZE,
     offset: params.offset || 0,
     search: params.search,
-    heuristicPassed: params.heuristicPassed,
-    classificationTypes: params.classificationTypes
+    heuristicPassed: params.heuristicPassed
   });
   return apiCall(`/api/messages/detailed?${query}`);
 }
@@ -115,151 +108,6 @@ async function fetchMessages(params = {}) {
 // ============================================
 // Contacts APIs
 // ============================================
-
-/**
- * Fetch all contacts
- */
-async function fetchContacts() {
-  return apiCall('/api/contacts');
-}
-
-/**
- * Fetch events for a specific contact
- * @param {string} name - Contact name
- */
-async function fetchContactEvents(name) {
-  return apiCall(`/api/contacts/${encodeURIComponent(name)}/events`);
-}
-
-/**
- * Delete a contact and all related data
- * @param {string} id - Contact ID
- */
-async function deleteContactById(id) {
-  return apiCall(`/api/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' });
-}
-
-// ============================================
-// Reminders APIs
-// ============================================
-
-/**
- * Fetch reminders with filtering and pagination
- * @param {Object} params - Query parameters
- */
-async function fetchReminders(params = {}) {
-  const query = buildQueryString({
-    limit: params.limit || PAGE_SIZE,
-    offset: params.offset || 0,
-    sent: params.sent
-  });
-  return apiCall(`/api/reminders?${query}`);
-}
-
-// ============================================
-// LLM Calls APIs
-// ============================================
-
-/**
- * Fetch LLM calls with filtering and pagination
- * @param {Object} params - Query parameters
- */
-async function fetchLLMCalls(params = {}) {
-  const query = buildQueryString({
-    limit: params.limit || PAGE_SIZE,
-    offset: params.offset || 0,
-    type: params.type,
-    success: params.success
-  });
-  return apiCall(`/api/llm-calls?${query}`);
-}
-
-// ============================================
-// Pipeline Logs APIs
-// ============================================
-
-/**
- * Fetch pipeline logs with filtering and pagination
- * @param {Object} params - Query parameters
- */
-async function fetchPipelineLogs(params = {}) {
-  const query = buildQueryString({
-    limit: params.limit || PAGE_SIZE,
-    offset: params.offset || 0,
-    stage: params.stage
-  });
-  return apiCall(`/api/pipeline-logs?${query}`);
-}
-
-// ============================================
-// Metrics APIs
-// ============================================
-
-/**
- * Fetch metrics summary
- */
-async function fetchMetrics() {
-  return apiCall('/api/metrics/summary');
-}
-
-// ============================================
-// Log Files APIs
-// ============================================
-
-/**
- * Fetch list of all log files
- */
-async function fetchLogFilesList() {
-  return apiCall('/api/logs/all');
-}
-
-/**
- * Fetch content of a specific log file
- * @param {string} path - Log file path
- * @param {number} lines - Number of lines to fetch
- */
-async function fetchLogFile(path, lines = 100) {
-  let url;
-  if (path.startsWith('logs/pipeline/')) {
-    const step = path.replace('logs/pipeline/', '').replace('.log', '');
-    url = `/api/logs/${step}?lines=${lines}`;
-  } else if (path.startsWith('logs/')) {
-    const filename = path.replace('logs/', '');
-    url = `/api/logs/file/${filename}?lines=${lines}`;
-  } else {
-    throw new Error('Unsupported log path');
-  }
-  return apiCall(url);
-}
-
-// ============================================
-// Pattern Learning APIs
-// ============================================
-
-/**
- * Fetch learning statistics
- */
-async function fetchLearningStats() {
-  return apiCall('/api/learning/stats');
-}
-
-/**
- * Fetch learned patterns
- */
-async function fetchPatterns() {
-  return apiCall('/api/learning/patterns');
-}
-
-// ============================================
-// Cleanup APIs
-// ============================================
-
-/**
- * Clean up test/demo data
- */
-async function cleanupTestDataApi() {
-  return apiCall('/api/cleanup/test-data', { method: 'POST' });
-}
 
 // ============================================
 // Push Notifications APIs
@@ -323,23 +171,10 @@ if (typeof module !== 'undefined' && module.exports) {
     apiCall,
     buildQueryString,
     fetchDashboardStats,
-    fetchDatabaseStats,
     fetchEvents,
     fetchEvent,
     eventAction,
     fetchMessages,
-    fetchContacts,
-    fetchContactEvents,
-    deleteContactById,
-    fetchReminders,
-    fetchLLMCalls,
-    fetchPipelineLogs,
-    fetchMetrics,
-    fetchLogFilesList,
-    fetchLogFile,
-    fetchLearningStats,
-    fetchPatterns,
-    cleanupTestDataApi,
     fetchVapidPublicKey,
     subscribeToNotifications,
     unsubscribeFromNotifications,

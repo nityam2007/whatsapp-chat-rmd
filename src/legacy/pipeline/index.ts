@@ -116,8 +116,6 @@ export async function processMessage(message: StoredMessage): Promise<StoredEven
       heuristic_passed: null,  // Will be updated
       heuristic_score: null,
       heuristic_signals: null,
-      classification_type: null,
-      classification_confidence: null,
       extraction_success: null,
       extraction_event_id: null,
       pipeline_completed: false,
@@ -827,7 +825,7 @@ async function checkNegationCancellation(
     // Check if the event title or source contains the keyword being negated
     if (eventTitle.includes(matchedKeyword) || eventSource.includes(matchedKeyword)) {
       // Only cancel if the event is still active/pending
-      if (['pending', 'pending_confirmation', 'active', 'soft'].includes(event.status)) {
+      if (['pending', 'active'].includes(event.status)) {
         logger.info('Found matching event to cancel via negation', {
           messageId: message.id,
           eventId: event.id,

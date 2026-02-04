@@ -1,12 +1,10 @@
 /**
  * Express Server Setup
  * 
- * Main API server with comprehensive endpoints for:
+ * Main API server with endpoints for:
  * - Events management (CRUD, accept/decline)
  * - Messages viewing
- * - Contacts
  * - Dashboard stats
- * - Pipeline logs
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
@@ -16,9 +14,6 @@ import path from 'path';
 import { webhookRouter } from './webhook/evolution.js';
 import { config } from './config/index.js';
 import { 
-  getAllContacts, 
-  getTopContacts, 
-  getEventsByContact, 
   getISTTimestamp,
   getMessages,
   getMessagesWithPipelineData,
@@ -29,15 +24,7 @@ import {
   getUpcomingEvents,
   getEventStats,
   getMessageStats,
-  archiveOldData,
-  getArchiveMetadata,
   getPipelineLogs,
-  getAllPipelineLogs,
-  getLLMCallsPaginated,
-  getReminders,
-  getDatabaseStats,
-  cleanupTestData,
-  deleteContactAndData,
   getEventsByContext,
   getHotEvents,
   getExtensionStats,
@@ -183,13 +170,11 @@ export function createServer(): Express {
       const eventStats = getEventStats();
       const messageStats = getMessageStats();
       const upcomingEvents = getUpcomingEvents(5);
-      const topContacts = getTopContacts(5);
       
       res.json({
         events: eventStats,
         messages: messageStats,
         upcoming: upcomingEvents,
-        topContacts,
         timestamp: getISTTimestamp(),
       });
     } catch (error) {
@@ -383,54 +368,6 @@ export function createServer(): Express {
     }
   });
 
-  // =============================================
-  // Contacts API
-  // =============================================
-  
-  app.get('/api/contacts', apiAuth, (_req: Request, res: Response) => {
-    try {
-      const contacts = getAllContacts();
-      res.json({ 
-        contacts, 
-        count: contacts.length,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to list contacts', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  app.get('/api/contacts/top', apiAuth, (req: Request, res: Response) => {
-    try {
-      const limit = parseInt(req.query.limit as string) || 20;
-      const contacts = getTopContacts(limit);
-      res.json({ 
-        contacts, 
-        count: contacts.length,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to get top contacts', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
-  app.get('/api/contacts/:name/events', apiAuth, (req: Request, res: Response) => {
-    try {
-      const name = req.params.name as string;
-      const events = getEventsByContact(name);
-      res.json({ 
-        contactName: name,
-        events, 
-        count: events.length,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to get events by contact', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
 
   // =============================================
   // Notifications API
@@ -1004,28 +941,6 @@ export function createServer(): Express {
   });
 
   // Get LLM calls with pagination
-  app.get('/api/llm-calls', apiAuth, (req: Request, res: Response) => {
-    try {
-      const limit = parseInt(req.query.limit as string) || 50;
-      const offset = parseInt(req.query.offset as string) || 0;
-      const callType = req.query.type as string;
-      const success = req.query.success === 'true' ? true : req.query.success === 'false' ? false : undefined;
-      const messageId = req.query.messageId as string;
-      
-      const result = getLLMCallsPaginated({ limit, offset, callType, success, messageId });
-      
-      res.json({
-        calls: result.calls,
-        total: result.total,
-        limit,
-        offset,
-        timestamp: getISTTimestamp(),
-      });
-    } catch (error) {
-      logger.error('Failed to get LLM calls', { error });
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
 
   // Get reminders with pagination
   app.get('/api/reminders', apiAuth, (req: Request, res: Response) => {
@@ -1081,12 +996,8 @@ export function createServer(): Express {
       const search = req.query.search as string;
       const heuristicPassed = req.query.heuristicPassed === 'true' ? true : 
                               req.query.heuristicPassed === 'false' ? false : undefined;
-      const classificationTypes = req.query.classificationTypes 
-        ? (req.query.classificationTypes as string).split(',') 
-        : undefined;
-      
       const result = getMessagesWithPipelineData({ 
-        limit, offset, chatId, search, heuristicPassed, classificationTypes 
+        limit, offset, chatId, search, heuristicPassed 
       });
       
       res.json({

@@ -423,115 +423,6 @@ app.get('/api/messages', async (req, res) => {
   }
 });
 
-// Contacts
-app.get('/api/contacts', async (req, res) => {
-  try {
-    const data = await proxyToRMD('/api/contacts');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch contacts' });
-  }
-});
-
-app.get('/api/contacts/:name/events', async (req, res) => {
-  try {
-    const data = await proxyToRMD(`/api/contacts/${encodeURIComponent(req.params.name)}/events`);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch contact events' });
-  }
-});
-
-app.delete('/api/contacts/:id', async (req, res) => {
-  try {
-    const data = await proxyToRMD(`/api/contacts/${encodeURIComponent(req.params.id)}`, 'DELETE');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete contact' });
-  }
-});
-
-// Cleanup
-app.post('/api/cleanup/test-data', async (_req, res) => {
-  try {
-    const data = await proxyToRMD('/api/cleanup/test-data', 'POST');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to cleanup test data' });
-  }
-});
-
-// Logs
-app.get('/api/logs', async (_req, res) => {
-  try {
-    const data = await proxyToRMD('/api/logs');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch logs' });
-  }
-});
-
-app.get('/api/logs/all', async (_req, res) => {
-  try {
-    const data = await proxyToRMD('/api/logs/all');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch all logs' });
-  }
-});
-
-app.get('/api/logs/:step', async (req, res) => {
-  try {
-    const lines = req.query.lines || 50;
-    const data = await proxyToRMD(`/api/logs/${req.params.step}?lines=${lines}`);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch logs' });
-  }
-});
-
-app.get('/api/logs/file/:filename', async (req, res) => {
-  try {
-    const lines = req.query.lines || 100;
-    const data = await proxyToRMD(`/api/logs/file/${req.params.filename}?lines=${lines}`);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch log file' });
-  }
-});
-
-// LLM Calls
-app.get('/api/llm-calls', async (req, res) => {
-  try {
-    const queryString = new URLSearchParams(req.query as any).toString();
-    const data = await proxyToRMD(`/api/llm-calls?${queryString}`);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch LLM calls' });
-  }
-});
-
-// Reminders
-app.get('/api/reminders', async (req, res) => {
-  try {
-    const queryString = new URLSearchParams(req.query as any).toString();
-    const data = await proxyToRMD(`/api/reminders?${queryString}`);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch reminders' });
-  }
-});
-
-// Pipeline Logs (DB)
-app.get('/api/pipeline-logs', async (req, res) => {
-  try {
-    const queryString = new URLSearchParams(req.query as any).toString();
-    const data = await proxyToRMD(`/api/pipeline-logs?${queryString}`);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch pipeline logs' });
-  }
-});
 
 // Detailed Messages
 app.get('/api/messages/detailed', async (req, res) => {
@@ -544,53 +435,6 @@ app.get('/api/messages/detailed', async (req, res) => {
   }
 });
 
-// Database Stats
-app.get('/api/db/stats', async (_req, res) => {
-  try {
-    const data = await proxyToRMD('/api/db/stats');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch database stats' });
-  }
-});
-
-// Learning/Patterns
-app.get('/api/learning/stats', async (_req, res) => {
-  try {
-    const data = await proxyToRMD('/api/learning/stats');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch learning stats' });
-  }
-});
-
-app.get('/api/learning/patterns', async (_req, res) => {
-  try {
-    const data = await proxyToRMD('/api/learning/patterns');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch patterns' });
-  }
-});
-
-// Metrics
-app.get('/api/metrics', async (_req, res) => {
-  try {
-    const data = await proxyToRMD('/api/metrics');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch metrics' });
-  }
-});
-
-app.get('/api/metrics/summary', async (_req, res) => {
-  try {
-    const data = await proxyToRMD('/api/metrics/summary');
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch metrics summary' });
-  }
-});
 
 // =============================================
 // RMD Push Status (for dashboard display)
@@ -635,7 +479,7 @@ app.get('{*path}', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`
 +=====================================================================+
-|                   Argus Dashboard & Webapp v0.8.1                   |
+|                   Argus Dashboard & Webapp v1.0.0                   |
 +=====================================================================+
 |  Dashboard:     http://localhost:${String(PORT).padEnd(5)}                              |
 |  RMD API:       ${RMD_API_URL.padEnd(50)}|
@@ -643,10 +487,9 @@ app.listen(PORT, () => {
 |  Subscriptions: ${String(subscriptions.size).padEnd(49)}|
 +---------------------------------------------------------------------+
 |  Features:                                                          |
-|    - Dashboard with stats and upcoming events                       |
+|    - Dashboard with upcoming events                                 |
 |    - Event management (accept/decline/snooze/complete)              |
 |    - Message history viewer                                         |
-|    - Pipeline metrics and logs                                      |
 |    - Push notification management                                   |
 +=====================================================================+
   `);
