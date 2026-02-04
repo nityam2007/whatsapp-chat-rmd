@@ -1,0 +1,67 @@
+---
+title: Argus Chrome Extension Architecture
+---
+flowchart TB
+    subgraph Browser["Chrome Browser"]
+        direction TB
+        
+        subgraph Extension["Chrome Extension"]
+            BG["🔧 Background Service Worker<br/>Site detection & API calls"]
+            CS["📄 Content Script<br/>Overlay injection"]
+            POP["🪟 Popup<br/>Status & events"]
+        end
+        
+        subgraph Sites["Monitored Sites"]
+            TRAVEL["✈️ Travel Sites<br/>MakeMyTrip, Booking"]
+            SHOP["🛒 Shopping Sites<br/>Amazon, Flipkart"]
+            STREAM["📺 Streaming<br/>Netflix, Prime"]
+            MAPS["🗺️ Maps<br/>Google Maps"]
+        end
+    end
+    
+    subgraph Backend["Argus Backend (localhost:3000)"]
+        direction TB
+        API["📡 Extension API<br/>/api/extension/*"]
+        DB["💾 SQLite Database<br/>Events + Context"]
+        FAISS["🔍 FAISS Vector<br/>Semantic Search"]
+    end
+    
+    subgraph User["User Actions"]
+        ACCEPT["✅ Accept"]
+        SNOOZE["⏰ Snooze"]
+        DISMISS["❌ Dismiss"]
+    end
+
+    %% Flow from sites to extension
+    TRAVEL --> BG
+    SHOP --> BG
+    STREAM --> BG
+    MAPS --> BG
+    
+    %% Extension internal flow
+    BG -->|"Extract context<br/>(keywords, location)"| API
+    API -->|"Query events"| DB
+    API -->|"Semantic match"| FAISS
+    API -->|"Matching events"| BG
+    BG -->|"Send matches"| CS
+    CS -->|"Display overlay"| User
+    
+    %% User actions back to API
+    ACCEPT -->|"POST /api/events/:id/complete"| API
+    SNOOZE -->|"POST /api/events/:id/snooze"| API
+    DISMISS -.->|"Local only"| CS
+    
+    %% Popup connection
+    POP -->|"GET /api/extension/status"| API
+    POP -->|"GET /api/extension/hot-events"| API
+
+    %% Styling
+    classDef browser fill:#e3f2fd,stroke:#1565c0
+    classDef extension fill:#fff3e0,stroke:#ef6c00
+    classDef backend fill:#e8f5e9,stroke:#2e7d32
+    classDef action fill:#fce4ec,stroke:#c2185b
+    
+    class Browser browser
+    class Extension,BG,CS,POP extension
+    class Backend,API,DB,FAISS backend
+    class User,ACCEPT,SNOOZE,DISMISS action

@@ -1,0 +1,249 @@
+/* Argus Chrome Extension - Overlay Styles */
+
+/* Container for all overlay cards */
+#argus-overlay-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  pointer-events: none;
+}
+
+/* Individual event card */
+.argus-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  width: 340px;
+  overflow: hidden;
+  pointer-events: auto;
+  animation: argus-slide-in 0.3s ease-out forwards;
+  opacity: 0;
+  transform: translateX(100px);
+}
+
+@keyframes argus-slide-in {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.argus-card-exit {
+  animation: argus-slide-out 0.3s ease-in forwards;
+}
+
+@keyframes argus-slide-out {
+  to {
+    opacity: 0;
+    transform: translateX(100px) scale(0.95);
+  }
+}
+
+.argus-card-processing {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.argus-card-success {
+  background: linear-gradient(135deg, #0d3320 0%, #1a4731 100%) !important;
+}
+
+.argus-card-snoozed {
+  background: linear-gradient(135deg, #3d2e0a 0%, #4a3a12 100%) !important;
+}
+
+.argus-card-error {
+  background: linear-gradient(135deg, #3d0a0a 0%, #4a1212 100%) !important;
+}
+
+/* Card header */
+.argus-card-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.argus-icon {
+  font-size: 18px;
+  margin-right: 8px;
+}
+
+.argus-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #a0aec0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.argus-close {
+  background: none;
+  border: none;
+  color: #718096;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.argus-close:hover {
+  color: #e53e3e;
+}
+
+/* Card body */
+.argus-card-body {
+  padding: 16px;
+}
+
+.argus-event-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.argus-event-meta {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.argus-contact,
+.argus-location {
+  font-size: 12px;
+  color: #a0aec0;
+}
+
+.argus-match-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.argus-match-type {
+  font-size: 12px;
+  color: #90cdf4;
+}
+
+.argus-confidence {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.argus-confidence.high {
+  background: #38a169;
+  color: #ffffff;
+}
+
+.argus-confidence.medium {
+  background: #d69e2e;
+  color: #1a202c;
+}
+
+.argus-confidence.low {
+  background: #718096;
+  color: #ffffff;
+}
+
+/* Card actions */
+.argus-card-actions {
+  display: flex;
+  padding: 12px 16px;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.argus-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.argus-btn-complete {
+  background: #38a169;
+  color: #ffffff;
+}
+
+.argus-btn-complete:hover {
+  background: #2f855a;
+}
+
+.argus-btn-snooze {
+  background: #d69e2e;
+  color: #1a202c;
+}
+
+.argus-btn-snooze:hover {
+  background: #b7791f;
+}
+
+.argus-btn-dismiss {
+  background: rgba(255, 255, 255, 0.1);
+  color: #a0aec0;
+}
+
+.argus-btn-dismiss:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: light) {
+  .argus-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  }
+  
+  .argus-card-header {
+    background: rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  
+  .argus-title {
+    color: #4a5568;
+  }
+  
+  .argus-event-title {
+    color: #1a202c;
+  }
+  
+  .argus-contact,
+  .argus-location {
+    color: #4a5568;
+  }
+  
+  .argus-match-info {
+    background: rgba(0, 0, 0, 0.03);
+  }
+  
+  .argus-match-type {
+    color: #2b6cb0;
+  }
+  
+  .argus-card-actions {
+    background: rgba(0, 0, 0, 0.03);
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+}

@@ -1,266 +1,223 @@
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#6366f1', 'secondaryColor': '#8b5cf6', 'tertiaryColor': '#f59e0b'}}}%%
-
+---
+title: Argus v0.9.0 - Proactive Memory System
+---
 flowchart TB
     %% ============================================
-    %% ARGUS - COMPLETE ARCHITECTURE
-    %% Version: 0.5.0 (Auto-Learning System)
+    %% COMPLETE ARCHITECTURE - Based on Actual Code
     %% ============================================
 
-    %% ----- INPUT LAYER -----
-    subgraph INPUT["INPUT LAYER"]
-        PHONE["Phone: WhatsApp App"]
-        WACLOUD["WhatsApp Cloud Servers"]
+    %% === INPUT SOURCES ===
+    subgraph Inputs["📥 INPUT SOURCES"]
+        direction LR
+        PHONE["📱 Phone<br/>WhatsApp App"]
+        BROWSER["🌐 Browser<br/>Chrome"]
     end
 
-    %% ----- WHATSAPP INTEGRATION -----
-    subgraph EVOLUTION["WHATSAPP INTEGRATION (Port 8080)"]
-        EVO["Evolution API"]
-        BAILEYS["Baileys Library"]
-        POSTGRES[("PostgreSQL")]
+    %% === WHATSAPP INTEGRATION ===
+    subgraph Evolution["🔌 EVOLUTION API (Port 8080)"]
+        direction TB
+        WACLOUD["WhatsApp Cloud"]
+        BAILEYS["Baileys Library<br/>WhatsApp Web Protocol"]
+        PG[("PostgreSQL<br/>Message History")]
+        
+        WACLOUD <--> BAILEYS
+        BAILEYS --> PG
     end
 
-    %% ----- MAIN APPLICATION -----
-    subgraph ARGUS["ARGUS SERVICE (Port 3000)"]
+    %% === CHROME EXTENSION ===
+    subgraph Chrome["🧩 CHROME EXTENSION (Manifest V3)"]
+        direction TB
+        
+        subgraph Detectors["Site Detectors"]
+            TRAVEL["✈️ Travel<br/>MakeMyTrip, Booking"]
+            SHOP["🛒 Shopping<br/>Amazon, Flipkart"]
+            STREAM["📺 Streaming<br/>Netflix, Prime"]
+        end
+        
+        BG["Background Worker<br/>Service Worker"]
+        CONTENT["Content Script<br/>Overlay Injection"]
+        POPUP["Popup UI<br/>Status & Events"]
+        
+        TRAVEL --> BG
+        SHOP --> BG
+        STREAM --> BG
+        BG --> CONTENT
+    end
+
+    %% === ARGUS CORE ===
+    subgraph Argus["⚡ ARGUS SERVICE (Port 3000)"]
+        direction TB
         
         %% Webhook Layer
-        subgraph WEBHOOK_LAYER["Webhook Layer"]
-            WEBHOOK["POST /webhook/evolution"]
-            STORE_RAW["Store Raw Message"]
+        subgraph Webhook["📨 WEBHOOK LAYER"]
+            WH_RECV["POST /webhook/evolution"]
+            DEDUP["Deduplication<br/>5s window"]
+            CONTACT["Extract Contact<br/>pushName → DB"]
         end
-
-        %% Pipeline Stage 1: Heuristic Gate
-        subgraph STAGE1["Stage 1: Heuristic Gate"]
-            HEURISTIC{"Signal Detection"}
-            KEYWORDS["Keywords: tomorrow, meeting, remind, kal, baje, exam..."]
-            REGIONAL["Regional: Tamil, Telugu, Marathi, Bengali, Gujarati"]
-            SCORE["Calculate Score"]
+        
+        %% Extraction Pipeline
+        subgraph Pipeline["📥 EXTRACTION PIPELINE"]
+            direction TB
+            GATE["🚪 Heuristic Gate<br/>70+ Keywords<br/>Regional: Tamil, Telugu, Hindi"]
+            CLASS["🏷️ Classifier<br/>Gemini 3"]
+            CONTEXT["📚 Context Builder<br/>Recent msgs + FAISS"]
+            TOKEN{"Tokens > 2000?"}
+            COMPRESS["🗜️ Quicksave<br/>Kanji Compression"]
+            EXTRACT["🤖 Gemini 3<br/>Extract Event"]
+            ROUTER["🔀 Event Router"]
         end
-
-        %% Pipeline Stage 2: Classification
-        subgraph STAGE2["Stage 2: Small LLM Classification"]
-            CLASSIFIER["GPT-4o-mini"]
-            EVENT_TYPE{"Event Type?"}
-            NEW_EVENT["new_event"]
-            REMINDER["reminder"]
-            UPDATE_EVENT["update_event"]
-            CANCEL_EVENT["cancel_event"]
-            IRRELEVANT["irrelevant"]
+        
+        %% Storage
+        subgraph Store["💾 STORAGE LAYER"]
+            direction LR
+            SQLITE[("SQLite<br/>Events, Messages<br/>Contacts, Logs")]
+            FAISS[("FAISS<br/>Vector Embeddings<br/>Semantic Search")]
         end
-
-        %% Pipeline Stage 3: Context Building
-        subgraph STAGE3["Stage 3: Context Building"]
-            FETCH_RECENT["Fetch Recent Messages"]
-            VECTOR_SEARCH["Vector Similarity Search"]
-            BUILD_CONTEXT["Build Context Window"]
-            TOKEN_CHECK{"Tokens > 2000?"}
-            COMPRESS["Compress with Quicksave"]
-            NO_COMPRESS["Keep Original"]
+        
+        %% Proactive Engine
+        subgraph ProactiveEngine["🔔 PROACTIVE ENGINE"]
+            direction TB
+            TRIGGER["Trigger Check<br/>ALL messages"]
+            SQL_Q["SQL Query<br/>Location, Keywords<br/>3-month window"]
+            FAISS_Q["FAISS Search<br/>Semantic Similarity"]
+            GEMINI_V["🤖 Gemini 3<br/>Context Validation"]
         end
-
-        %% Pipeline Stage 4: Rule Engine + Auto-Learning
-        subgraph STAGE4["Stage 4: Rule Engine + Auto-Learning"]
-            RULE_ENGINE["Rule Engine"]
-            STATIC_PATTERNS["70+ Static Patterns"]
-            LEARNED_PATTERNS["Dynamic Learned Patterns"]
-            CONFIDENCE{"Confidence >= 0.75 AND hasTime?"}
+        
+        %% Extension API
+        subgraph ExtAPI["🌐 EXTENSION API"]
+            direction LR
+            API_CTX["POST /api/extension/context"]
+            API_LOC["GET /api/extension/by-location"]
+            API_HOT["GET /api/extension/hot-events"]
         end
-
-        %% Pipeline Stage 5: LLM Extraction
-        subgraph STAGE5["Stage 5: Big LLM Extraction"]
-            EXTRACTOR["GPT-4o"]
-            EXTRACT_DATA["Extract: title, time, date, participants"]
-            LOG_EXTRACTION["Log to llm_extraction_logs"]
+        
+        %% Scheduler
+        subgraph Scheduler["⏰ SCHEDULER"]
+            CRON["Cron Jobs"]
+            DUE["Check Due Events"]
         end
-
-        %% Pipeline Stage 6: Event Routing
-        subgraph STAGE6["Stage 6: Event Routing"]
-            ROUTER{"Route by Type"}
-            CREATE_EVENT["Create New Event"]
-            UPDATE_DB["Update Existing Event"]
-            CANCEL_DB["Cancel Event"]
-            SCHEDULE["Schedule Reminder"]
-        end
-
-        %% Storage Layer
-        subgraph STORAGE["Storage Layer"]
-            SQLITE[("SQLite Database")]
-            FAISS[("FAISS Vector Store")]
-        end
-
-        %% Auto-Learning System
-        subgraph LEARNING["Auto-Learning System"]
-            LLM_LOGS[("llm_extraction_logs")]
-            PATTERN_LEARNER["Pattern Learner (Hourly)"]
-            ANALYZE["Analyze Patterns"]
-            VALIDATE["Validate 70%+ Precision"]
-            LEARNED_DB[("learned_patterns")]
-            RELOAD["Reload Patterns (5 min)"]
-        end
-
     end
 
-    %% ----- EXTERNAL SERVICES -----
-    subgraph EXTERNAL["EXTERNAL SERVICES"]
-        OPENAI["OpenAI API"]
-        REDIS[("Redis Cache")]
+    %% === WEBAPP ===
+    subgraph Webapp["🖥️ WEBAPP (Port 3002)"]
+        direction TB
+        DASH["Dashboard<br/>Events, Messages, Logs"]
+        PUSH_MGR["Push Manager<br/>VAPID Subscriptions"]
+        PROXY["API Proxy<br/>→ Argus API"]
     end
 
-    %% ----- MONITORING -----
-    subgraph MONITORING["MONITORING STACK"]
-        GRAFANA["Grafana (Port 3001)"]
-        LOKI["Loki (Port 3100)"]
-        PROMTAIL["Promtail"]
-    end
-
-    %% ----- NOTIFICATION -----
-    subgraph NOTIFICATION["PUSH NOTIFICATION (Port 3002)"]
-        WEBAPP["Push Webapp"]
+    %% === NOTIFICATIONS ===
+    subgraph Notify["🔔 NOTIFICATIONS"]
+        direction LR
         VAPID["VAPID Keys"]
-        SERVICE_WORKER["Service Worker"]
+        WEB_PUSH["Web Push<br/>Service Worker"]
+        OVERLAY["Overlay Card<br/>Accept | Snooze | Dismiss"]
+        ALERT["Browser Alert"]
     end
 
-    %% ----- OUTPUT -----
-    subgraph OUTPUT["OUTPUT LAYER"]
-        BROWSER["Browser Notification"]
+    %% === EXTERNAL SERVICES ===
+    subgraph External["☁️ EXTERNAL SERVICES"]
+        direction LR
+        OPENAI["OpenAI API<br/>Embeddings"]
+        GEMINI["Gemini API<br/>Gemini 3"]
+        REDIS[("Redis<br/>Session Cache")]
     end
 
     %% ============================================
-    %% CONNECTIONS - Main Flow
+    %% CONNECTIONS - WhatsApp Flow
     %% ============================================
-
-    %% Input to Evolution
     PHONE <--> WACLOUD
-    WACLOUD <--> BAILEYS
-    BAILEYS --> EVO
-    EVO --> POSTGRES
-
-    %% Evolution to Argus
-    EVO -->|"Webhook POST"| WEBHOOK
-    WEBHOOK --> STORE_RAW
-    STORE_RAW --> SQLITE
-
-    %% Stage 1: Heuristic
-    STORE_RAW --> HEURISTIC
-    HEURISTIC --> KEYWORDS
-    HEURISTIC --> REGIONAL
-    KEYWORDS --> SCORE
-    REGIONAL --> SCORE
-    HEURISTIC -->|"No Signal"| DROP["DROP MESSAGE"]
-    SCORE -->|"Has Signal"| CLASSIFIER
-
-    %% Stage 2: Classification
-    CLASSIFIER <-->|"Classify"| OPENAI
-    CLASSIFIER --> EVENT_TYPE
-    EVENT_TYPE --> NEW_EVENT
-    EVENT_TYPE --> REMINDER
-    EVENT_TYPE --> UPDATE_EVENT
-    EVENT_TYPE --> CANCEL_EVENT
-    EVENT_TYPE --> IRRELEVANT
-    IRRELEVANT --> DROP
-
-    %% Stage 3: Context
-    NEW_EVENT --> FETCH_RECENT
-    REMINDER --> FETCH_RECENT
-    UPDATE_EVENT --> FETCH_RECENT
-    CANCEL_EVENT --> FETCH_RECENT
-    FETCH_RECENT --> VECTOR_SEARCH
-    VECTOR_SEARCH --> FAISS
-    VECTOR_SEARCH --> BUILD_CONTEXT
-    BUILD_CONTEXT --> TOKEN_CHECK
-    TOKEN_CHECK -->|"Yes"| COMPRESS
-    TOKEN_CHECK -->|"No"| NO_COMPRESS
-
-    %% Stage 4: Rule Engine
-    COMPRESS --> RULE_ENGINE
-    NO_COMPRESS --> RULE_ENGINE
-    RULE_ENGINE --> STATIC_PATTERNS
-    RULE_ENGINE --> LEARNED_PATTERNS
-    STATIC_PATTERNS --> CONFIDENCE
-    LEARNED_PATTERNS --> CONFIDENCE
-
-    %% Stage 5: LLM Extraction (if needed)
-    CONFIDENCE -->|"Yes: Skip LLM"| ROUTER
-    CONFIDENCE -->|"No: Use LLM"| EXTRACTOR
-    EXTRACTOR <-->|"Extract"| OPENAI
-    EXTRACTOR --> EXTRACT_DATA
-    EXTRACT_DATA --> LOG_EXTRACTION
-    LOG_EXTRACTION --> LLM_LOGS
-    LOG_EXTRACTION --> ROUTER
-
-    %% Stage 6: Routing
-    ROUTER -->|"new_event"| CREATE_EVENT
-    ROUTER -->|"update"| UPDATE_DB
-    ROUTER -->|"cancel"| CANCEL_DB
-    ROUTER -->|"reminder"| SCHEDULE
-    CREATE_EVENT --> SQLITE
-    CREATE_EVENT --> FAISS
-    UPDATE_DB --> SQLITE
-    CANCEL_DB --> SQLITE
-    SCHEDULE --> WEBAPP
-
-    %% Auto-Learning Loop
-    LLM_LOGS --> PATTERN_LEARNER
-    PATTERN_LEARNER --> ANALYZE
-    ANALYZE --> VALIDATE
-    VALIDATE --> LEARNED_DB
-    LEARNED_DB --> RELOAD
-    RELOAD --> LEARNED_PATTERNS
-
-    %% Notification Flow
-    WEBAPP --> VAPID
-    VAPID --> SERVICE_WORKER
-    SERVICE_WORKER --> BROWSER
-
-    %% Monitoring Flow
-    ARGUS --> PROMTAIL
-    PROMTAIL --> LOKI
-    LOKI --> GRAFANA
-
-    %% Redis Connections
-    EVO <--> REDIS
-    ARGUS <--> REDIS
+    BAILEYS -->|"webhook POST"| WH_RECV
+    WH_RECV --> DEDUP
+    DEDUP --> CONTACT
+    CONTACT --> SQLITE
+    
+    %% Extraction Pipeline Flow
+    DEDUP --> GATE
+    GATE -->|"signal"| CLASS
+    CLASS <-->|"classify"| GEMINI
+    CLASS --> CONTEXT
+    CONTEXT --> FAISS
+    CONTEXT <-->|"embed"| OPENAI
+    CONTEXT --> TOKEN
+    TOKEN -->|"yes"| COMPRESS
+    TOKEN -->|"no"| EXTRACT
+    COMPRESS --> EXTRACT
+    EXTRACT <-->|"extract"| GEMINI
+    EXTRACT --> ROUTER
+    ROUTER --> SQLITE
+    ROUTER -->|"embed"| OPENAI
+    OPENAI --> FAISS
+    
+    %% Proactive from WhatsApp
+    DEDUP -->|"ALL msgs"| TRIGGER
+    TRIGGER --> SQL_Q
+    TRIGGER --> FAISS_Q
+    SQL_Q --> SQLITE
+    FAISS_Q --> FAISS
+    SQL_Q --> GEMINI_V
+    FAISS_Q --> GEMINI_V
+    GEMINI_V <--> GEMINI
+    
+    %% ============================================
+    %% CONNECTIONS - Chrome Extension Flow
+    %% ============================================
+    BROWSER --> TRAVEL
+    BROWSER --> SHOP
+    BROWSER --> STREAM
+    
+    BG -->|"context"| API_CTX
+    BG -->|"location"| API_LOC
+    POPUP -->|"events"| API_HOT
+    
+    API_CTX --> SQL_Q
+    API_CTX --> FAISS_Q
+    API_LOC --> SQL_Q
+    API_HOT --> SQLITE
+    
+    %% ============================================
+    %% CONNECTIONS - Notifications
+    %% ============================================
+    GEMINI_V -->|"match"| WEB_PUSH
+    GEMINI_V -->|"match"| OVERLAY
+    OVERLAY --> CONTENT
+    
+    SCHEDULER --> DUE
+    DUE --> SQLITE
+    DUE --> WEB_PUSH
+    
+    WEB_PUSH --> VAPID
+    VAPID --> ALERT
+    
+    %% Webapp connections
+    DASH --> PROXY
+    PROXY --> Argus
+    PUSH_MGR --> VAPID
+    
+    %% Redis
+    Evolution <--> REDIS
+    Argus <--> REDIS
 
     %% ============================================
     %% STYLING
     %% ============================================
+    classDef input fill:#25D366,color:#fff
+    classDef evolution fill:#6366f1,color:#fff
+    classDef chrome fill:#ff6b6b,color:#fff
+    classDef pipeline fill:#10a37f,color:#fff
+    classDef storage fill:#0ea5e9,color:#fff
+    classDef proactive fill:#8b5cf6,color:#fff
+    classDef notify fill:#f97316,color:#fff
+    classDef external fill:#10a37f,color:#fff
+    classDef webapp fill:#ec4899,color:#fff
 
-    %% Input styling
-    style PHONE fill:#25D366,color:#fff,stroke:#128C7E
-    style WACLOUD fill:#25D366,color:#fff,stroke:#128C7E
-
-    %% Evolution styling
-    style EVO fill:#6366f1,color:#fff
-    style BAILEYS fill:#6366f1,color:#fff
-
-    %% Pipeline styling
-    style WEBHOOK fill:#3b82f6,color:#fff
-    style HEURISTIC fill:#8b5cf6,color:#fff
-    style CLASSIFIER fill:#10a37f,color:#fff
-    style RULE_ENGINE fill:#f59e0b,color:#fff
-    style EXTRACTOR fill:#10a37f,color:#fff
-    style ROUTER fill:#8b5cf6,color:#fff
-
-    %% Storage styling
-    style SQLITE fill:#0ea5e9,color:#fff
-    style FAISS fill:#0ea5e9,color:#fff
-    style POSTGRES fill:#336791,color:#fff
-    style REDIS fill:#dc2626,color:#fff
-
-    %% Learning styling
-    style PATTERN_LEARNER fill:#f59e0b,color:#fff
-    style LLM_LOGS fill:#f59e0b,color:#000
-    style LEARNED_DB fill:#f59e0b,color:#000
-
-    %% External styling
-    style OPENAI fill:#10a37f,color:#fff
-
-    %% Notification styling
-    style WEBAPP fill:#f97316,color:#fff
-    style BROWSER fill:#f97316,color:#fff
-
-    %% Monitoring styling
-    style GRAFANA fill:#f97316,color:#fff
-    style LOKI fill:#f97316,color:#fff
-
-    %% Drop styling
-    style DROP fill:#ef4444,color:#fff
+    class PHONE,BROWSER input
+    class WACLOUD,BAILEYS,PG evolution
+    class TRAVEL,SHOP,STREAM,BG,CONTENT,POPUP chrome
+    class WH_RECV,DEDUP,CONTACT,GATE,CLASS,CONTEXT,COMPRESS,EXTRACT,ROUTER pipeline
+    class SQLITE,FAISS storage
+    class TRIGGER,SQL_Q,FAISS_Q,GEMINI_V proactive
+    class API_CTX,API_LOC,API_HOT chrome
+    class VAPID,WEB_PUSH,OVERLAY,ALERT notify
+    class OPENAI,GEMINI,REDIS external
+    class DASH,PUSH_MGR,PROXY webapp

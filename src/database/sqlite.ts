@@ -190,6 +190,9 @@ function runMigrations(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_events_contact_name ON events(contact_name);
     CREATE INDEX IF NOT EXISTS idx_events_source_message_id ON events(source_message_id);
     CREATE INDEX IF NOT EXISTS idx_events_archived_at ON events(archived_at);
+    CREATE INDEX IF NOT EXISTS idx_events_location ON events(location);
+    CREATE INDEX IF NOT EXISTS idx_events_proactive_triggered ON events(proactive_triggered);
+    CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
   `);
 
   // Create reminders table
@@ -1304,6 +1307,260 @@ export function updateEventContextTags(
   
   logger.debug('Event context tags updated', { eventId, contextTags, location });
   return result.changes > 0;
+}
+
+// ============================================
+// Chrome Extension API Functions
+// ============================================
+
+export interface ExtensionContextQuery {
+  url?: string;
+  pageTitle?: string;
+  keywords?: string[];
+  location?: string;
+  activity?: string;  // e.g., 'travel_search', 'shopping', 'banking'
+}
+
+export interface ContextMatchResult {
+  event: StoredEvent;
+  matchType: 'location' | 'keyword' | 'context_tag';
+  matchedValue: string;
+  confidence: number;
+}
+
+/**
+ * Get events matching browser context (for Chrome extension)
+ * Searches location, context_tags, trigger_keywords, and title
+ * Only returns events from last 3 months (hot data)
+ */
+export function getEventsByContext(query: ExtensionContextQuery): ContextMatchResult[] {
+  const db = dbInstance || initDatabase();
+  const results: ContextMatchResult[] = [];
+  
+  // Calculate 3 months ago for hot data window
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  const threeMonthsAgoISO = threeMonthsAgo.toISOString();
+  
+  // Build dynamic query based on provided context
+  let conditions: string[] = [
+    `e.status IN ('pending', 'pending_confirmation', 'active', 'soft')`,
+    `e.archived_at IS NULL`,
+    `e.created_at >= ?`,
+  ];
+  let params: (string | number)[] = [threeMonthsAgoISO];
+  
+  // Location-based matching (highest priority)
+  if (query.location) {
+    const locationLower = query.location.toLowerCase();
+    const locationStmt = db.prepare(`
+      SELECT e.*, m.content as source_message_content
+      FROM events e
+      LEFT JOIN messages m ON e.source_message_id = m.id
+      WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+        AND e.archived_at IS NULL
+        AND e.created_at >= ?
+        AND (
+          LOWER(e.location) LIKE ? OR
+          LOWER(e.title) LIKE ? OR
+          LOWER(e.context_tags) LIKE ? OR
+          LOWER(e.trigger_keywords) LIKE ?
+        )
+      ORDER BY e.created_at DESC
+      LIMIT 20
+    `);
+    
+    const pattern = `%${locationLower}%`;
+    const rows = locationStmt.all(threeMonthsAgoISO, pattern, pattern, pattern, pattern) as Record<string, unknown>[];
+    
+    for (const row of rows) {
+      const event = rowToEvent(row);
+      const matchedValue = event.location || query.location;
+      results.push({
+        event,
+        matchType: 'location',
+        matchedValue,
+        confidence: event.location?.toLowerCase() === locationLower ? 0.95 : 0.75,
+      });
+    }
+  }
+  
+  // Keyword-based matching
+  if (query.keywords && query.keywords.length > 0) {
+    for (const keyword of query.keywords) {
+      const keywordLower = keyword.toLowerCase();
+      if (keywordLower.length < 3) continue; // Skip short keywords
+      
+      const keywordStmt = db.prepare(`
+        SELECT e.*, m.content as source_message_content
+        FROM events e
+        LEFT JOIN messages m ON e.source_message_id = m.id
+        WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+          AND e.archived_at IS NULL
+          AND e.created_at >= ?
+          AND (
+            LOWER(e.title) LIKE ? OR
+            LOWER(e.context_tags) LIKE ? OR
+            LOWER(e.trigger_keywords) LIKE ? OR
+            LOWER(m.content) LIKE ?
+          )
+        ORDER BY e.created_at DESC
+        LIMIT 10
+      `);
+      
+      const pattern = `%${keywordLower}%`;
+      const rows = keywordStmt.all(threeMonthsAgoISO, pattern, pattern, pattern, pattern) as Record<string, unknown>[];
+      
+      for (const row of rows) {
+        const event = rowToEvent(row);
+        // Avoid duplicates
+        if (!results.find(r => r.event.id === event.id)) {
+          results.push({
+            event,
+            matchType: 'keyword',
+            matchedValue: keyword,
+            confidence: 0.65,
+          });
+        }
+      }
+    }
+  }
+  
+  // Activity-based matching (map activities to context tags)
+  if (query.activity) {
+    const activityMappings: Record<string, string[]> = {
+      'travel_search': ['travel', 'trip', 'flight', 'hotel', 'vacation', 'holiday'],
+      'shopping': ['buy', 'purchase', 'gift', 'order', 'shop'],
+      'banking': ['payment', 'transfer', 'bill', 'subscription', 'cancel'],
+      'streaming': ['watch', 'movie', 'show', 'subscription', 'cancel'],
+    };
+    
+    const tags = activityMappings[query.activity] || [];
+    for (const tag of tags) {
+      const tagStmt = db.prepare(`
+        SELECT e.*, m.content as source_message_content
+        FROM events e
+        LEFT JOIN messages m ON e.source_message_id = m.id
+        WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+          AND e.archived_at IS NULL
+          AND e.created_at >= ?
+          AND (
+            LOWER(e.context_tags) LIKE ? OR
+            LOWER(e.title) LIKE ?
+          )
+        ORDER BY e.created_at DESC
+        LIMIT 5
+      `);
+      
+      const pattern = `%${tag}%`;
+      const rows = tagStmt.all(threeMonthsAgoISO, pattern, pattern) as Record<string, unknown>[];
+      
+      for (const row of rows) {
+        const event = rowToEvent(row);
+        if (!results.find(r => r.event.id === event.id)) {
+          results.push({
+            event,
+            matchType: 'context_tag',
+            matchedValue: tag,
+            confidence: 0.60,
+          });
+        }
+      }
+    }
+  }
+  
+  // Sort by confidence
+  results.sort((a, b) => b.confidence - a.confidence);
+  
+  logger.info('Extension context query completed', {
+    query,
+    resultCount: results.length,
+    topMatches: results.slice(0, 3).map(r => ({ title: r.event.title, confidence: r.confidence })),
+  });
+  
+  return results;
+}
+
+/**
+ * Get all hot events (last 3 months) for extension cache
+ */
+export function getHotEvents(limit: number = 200): StoredEvent[] {
+  const db = dbInstance || initDatabase();
+  
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  const threeMonthsAgoISO = threeMonthsAgo.toISOString();
+  
+  const stmt = db.prepare(`
+    SELECT e.*, m.content as source_message_content
+    FROM events e
+    LEFT JOIN messages m ON e.source_message_id = m.id
+    WHERE e.status IN ('pending', 'pending_confirmation', 'active', 'soft')
+      AND e.archived_at IS NULL
+      AND e.created_at >= ?
+    ORDER BY e.created_at DESC
+    LIMIT ?
+  `);
+  
+  const rows = stmt.all(threeMonthsAgoISO, limit) as Record<string, unknown>[];
+  return rows.map(rowToEvent);
+}
+
+/**
+ * Get extension stats for dashboard
+ */
+export function getExtensionStats(): {
+  hotEventCount: number;
+  locationBasedCount: number;
+  keywordBasedCount: number;
+  avgConfidence: number;
+} {
+  const db = dbInstance || initDatabase();
+  
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  const threeMonthsAgoISO = threeMonthsAgo.toISOString();
+  
+  const hotCountStmt = db.prepare(`
+    SELECT COUNT(*) as count FROM events 
+    WHERE status IN ('pending', 'pending_confirmation', 'active', 'soft')
+      AND archived_at IS NULL
+      AND created_at >= ?
+  `);
+  const hotCount = (hotCountStmt.get(threeMonthsAgoISO) as { count: number }).count;
+  
+  const locationCountStmt = db.prepare(`
+    SELECT COUNT(*) as count FROM events 
+    WHERE status IN ('pending', 'pending_confirmation', 'active', 'soft')
+      AND archived_at IS NULL
+      AND created_at >= ?
+      AND location IS NOT NULL AND location != ''
+  `);
+  const locationCount = (locationCountStmt.get(threeMonthsAgoISO) as { count: number }).count;
+  
+  const keywordCountStmt = db.prepare(`
+    SELECT COUNT(*) as count FROM events 
+    WHERE status IN ('pending', 'pending_confirmation', 'active', 'soft')
+      AND archived_at IS NULL
+      AND created_at >= ?
+      AND trigger_keywords IS NOT NULL AND trigger_keywords != '[]'
+  `);
+  const keywordCount = (keywordCountStmt.get(threeMonthsAgoISO) as { count: number }).count;
+  
+  const avgConfStmt = db.prepare(`
+    SELECT AVG(confidence) as avg FROM events 
+    WHERE status IN ('pending', 'pending_confirmation', 'active', 'soft')
+      AND archived_at IS NULL
+      AND created_at >= ?
+  `);
+  const avgConf = (avgConfStmt.get(threeMonthsAgoISO) as { avg: number | null }).avg || 0;
+  
+  return {
+    hotEventCount: hotCount,
+    locationBasedCount: locationCount,
+    keywordBasedCount: keywordCount,
+    avgConfidence: Math.round(avgConf * 100) / 100,
+  };
 }
 
 // ============================================

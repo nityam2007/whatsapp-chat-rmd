@@ -5,6 +5,130 @@ New entries are added at the TOP of this file (append-only, newest first).
 
 ---
 
+## [0.9.0] - 2026-02-04
+
+### Added - Chrome Extension + Proactive Architecture Redesign
+
+Major architectural update to transform Argus from reactive to truly **proactive**. Added Chrome extension for browser context detection.
+
+#### 1. Chrome Extension (NEW)
+
+Built a complete Chrome extension (`extension/`) that:
+- **Monitors browsing activity** on travel, shopping, and streaming sites
+- **Extracts context** (destination, products, keywords) from pages
+- **Queries Argus backend** for matching events
+- **Displays overlay cards** with Accept/Snooze/Dismiss actions
+- **Desktop notifications** as fallback
+
+**Monitored Sites**:
+| Category | Sites |
+|----------|-------|
+| Travel | MakeMyTrip, Booking.com, Goibibo |
+| Shopping | Amazon (IN/COM), Flipkart |
+| Streaming | Netflix, Prime Video, Hotstar |
+| Navigation | Google Maps |
+
+**Extension Structure**:
+```
+extension/
+├── manifest.json        # Manifest V3 configuration
+├── background.js        # Service worker (site detection, API calls)
+├── content.js           # Overlay injection and page extraction
+├── overlay.css          # Overlay card styles
+├── popup.html/js        # Extension popup UI
+├── options.html/js      # Settings page
+└── icons/               # Extension icons
+```
+
+#### 2. Extension API Endpoints (NEW)
+
+Added new endpoints to `src/server.ts` for Chrome extension:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/extension/context` | POST | Submit browser context, get matching events |
+| `/api/extension/by-location` | GET | Query events by location |
+| `/api/extension/hot-events` | GET | Get all events from last 3 months |
+| `/api/extension/status` | GET | Connection status and stats |
+
+#### 3. Database Enhancements
+
+- Added indexes for proactive queries:
+  - `idx_events_location` - Fast location-based lookups
+  - `idx_events_proactive_triggered` - Filter triggered events
+  - `idx_events_created_at` - Time-based filtering
+  
+- New database functions in `src/database/sqlite.ts`:
+  - `getEventsByContext()` - Query by location, keywords, activity type
+  - `getHotEvents()` - Get events within 3-month window
+  - `getExtensionStats()` - Dashboard stats for extension
+
+#### 4. 3-Month Hot Data Window
+
+Events from the last 3 months are kept "hot" and queryable for proactive triggers. This enables scenarios like:
+- **Goa Cashew**: "Reached Goa" → triggers "Get cashews from Zantye's" (from 2 months ago)
+- **Gift Intent**: Browsing Amazon during sale → triggers "Sister wants Nike sneakers"
+- **Subscription Cancel**: Opening Netflix → triggers "Cancel after finishing show"
+
+#### 5. Proactive Trigger Scenarios
+
+The extension enables these use cases:
+
+| Scenario | Trigger | Action |
+|----------|---------|--------|
+| Travel Reminder | User on MakeMyTrip searching "Goa" | "Rahul recommended cashews at Zantye's" |
+| Gift Suggestion | User on Amazon during sale | "Sister mentioned these sneakers" |
+| Subscription Alert | User opens Netflix | "You planned to cancel after this show" |
+| Insurance Check | User on insurance portal | "Your car is 2018 model, not 2022" |
+
+#### 6. Version Bump
+
+- Updated version to **0.9.0** in:
+  - `src/server.ts` (health check + banner)
+  - `extension/manifest.json`
+
+### Files Added
+```
+extension/manifest.json           # Chrome extension manifest
+extension/background.js           # Background service worker
+extension/content.js              # Content script for overlays
+extension/overlay.css             # Overlay card styles
+extension/popup.html              # Popup UI
+extension/popup.js                # Popup logic
+extension/options.html            # Settings page
+extension/options.js              # Settings logic
+extension/icons/icon-128.svg      # Extension icon
+extension/README.md               # Extension documentation
+docs/diagrams/07-chrome-extension-flow.mmd  # Extension architecture diagram
+```
+
+### Files Modified
+```
+src/server.ts                     # Added extension API endpoints, version bump
+src/database/sqlite.ts            # Added indexes, context query functions
+src/services/proactiveTrigger.ts  # Simplified from 724→515 lines (29% reduction)
+docs/diagrams/architecture.mmd    # Added Chrome Extension layer, updated to v0.9.0
+```
+
+### Simplified - Proactive Engine (v0.9.0)
+
+Simplified the proactive trigger service from **3-stage to 2-stage matching**:
+
+| Before (v0.8.x) | After (v0.9.0) |
+|-----------------|----------------|
+| 3-stage: FAISS → Keyword → Gemini | 2-stage: SQL → Gemini |
+| 724 lines | 515 lines (29% smaller) |
+| Required FAISS embeddings | Uses SQL context matching |
+| Embedding-heavy | Lightweight SQL queries |
+
+**Key Changes**:
+- Removed FAISS dependency from proactive matching
+- Uses `getEventsByContext()` with 3-month hot data window
+- Simplified matching types: `sql_context` and `intelligent` (removed `faiss`, `keyword`)
+- Faster startup (no embedding generation needed)
+
+---
+
 ## [0.8.1] - 2026-02-03
 
 ### Fixed - Proactive Triggers & Push Notification Sync

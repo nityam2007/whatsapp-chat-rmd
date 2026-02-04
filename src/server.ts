@@ -42,6 +42,10 @@ import {
   getSemanticPatternStats,
   getAllSemanticPatterns,
   cleanupOldPatterns,
+  getEventsByContext,
+  getHotEvents,
+  getExtensionStats,
+  ExtensionContextQuery,
 } from './database/sqlite.js';
 import logger from './utils/logger.js';
 import { metrics } from './utils/metrics.js';
@@ -167,7 +171,7 @@ export function createServer(): Express {
   app.get('/', (_req: Request, res: Response) => {
     res.json({
       name: 'Argus',
-      version: '0.7.0',
+      version: '0.9.0',
       status: 'running',
       timezone: config.timezone,
       timestamp: getISTTimestamp(),
@@ -546,6 +550,119 @@ export function createServer(): Express {
       configured: !!(config.vapidPublicKey && config.vapidPrivateKey),
       subscriptionCount: getSubscriptionCount(),
     });
+  });
+
+  // =============================================
+  // Chrome Extension API
+  // =============================================
+
+  // Submit browser context and get matching events
+  app.post('/api/extension/context', async (req: Request, res: Response) => {
+    try {
+      const { url, pageTitle, keywords, location, activity } = req.body as ExtensionContextQuery;
+      
+      if (!url && !keywords && !location && !activity) {
+        res.status(400).json({ error: 'At least one context parameter required' });
+        return;
+      }
+      
+      logger.info('Extension context received', { url, pageTitle, keywords, location, activity });
+      
+      const matches = getEventsByContext({ url, pageTitle, keywords, location, activity });
+      
+      res.json({
+        success: true,
+        matches: matches.map(m => ({
+          event: {
+            id: m.event.id,
+            title: m.event.title,
+            status: m.event.status,
+            location: m.event.location,
+            context_tags: m.event.context_tags,
+            contact_name: m.event.contact_name,
+            start_time_ist: m.event.start_time_ist,
+            created_at: m.event.created_at,
+          },
+          matchType: m.matchType,
+          matchedValue: m.matchedValue,
+          confidence: m.confidence,
+        })),
+        count: matches.length,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Extension context query failed', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get events by location (quick endpoint for location-based triggers)
+  app.get('/api/extension/by-location', (req: Request, res: Response) => {
+    try {
+      const location = req.query.location as string;
+      
+      if (!location) {
+        res.status(400).json({ error: 'Location parameter required' });
+        return;
+      }
+      
+      const matches = getEventsByContext({ location });
+      
+      res.json({
+        success: true,
+        events: matches.map(m => m.event),
+        count: matches.length,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Extension location query failed', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get all hot events (for extension cache sync)
+  app.get('/api/extension/hot-events', (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 200;
+      const events = getHotEvents(limit);
+      
+      res.json({
+        success: true,
+        events: events.map(e => ({
+          id: e.id,
+          title: e.title,
+          status: e.status,
+          location: e.location,
+          context_tags: e.context_tags,
+          trigger_keywords: e.trigger_keywords,
+          contact_name: e.contact_name,
+          created_at: e.created_at,
+        })),
+        count: events.length,
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Extension hot events query failed', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Extension heartbeat/status
+  app.get('/api/extension/status', (_req: Request, res: Response) => {
+    try {
+      const stats = getExtensionStats();
+      
+      res.json({
+        success: true,
+        status: 'connected',
+        stats,
+        serverVersion: '0.9.0',
+        timestamp: getISTTimestamp(),
+      });
+    } catch (error) {
+      logger.error('Extension status failed', { error });
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   // =============================================
@@ -1242,8 +1359,8 @@ export function startServer(): void {
     
     console.log(`
 +=====================================================================+
-|                         Argus v0.7.0                                |
-|                  (Gemini 3 Flash + Auto-Learning)                   |
+|                         Argus v0.9.0                                |
+|              (Proactive Chrome Extension + AI Pipeline)             |
 +=====================================================================+
 |  Server: http://localhost:${String(config.port).padEnd(5)}                                  |
 |  Environment: ${config.nodeEnv.padEnd(52)}|
@@ -1275,6 +1392,12 @@ export function startServer(): void {
 |                                                                     |
 |    GET  /api/archive              - List archives                   |
 |    POST /api/archive              - Trigger manual archive          |
+|                                                                     |
+|  Chrome Extension API (NEW):                                        |
+|    POST /api/extension/context    - Submit browser context          |
+|    GET  /api/extension/by-location- Query by location               |
+|    GET  /api/extension/hot-events - Get 3-month hot events          |
+|    GET  /api/extension/status     - Extension connection status     |
 |                                                                     |
 |  Auto-Learning API:                                                 |
 |    GET  /api/learning/stats       - Pattern learning statistics     |

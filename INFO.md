@@ -2,16 +2,19 @@
 
 ## Overview
 
-**Argus** - An AI-powered system that extracts events, reminders, and scheduling information from WhatsApp messages.
+**Argus** - An AI-powered **proactive memory assistant** that extracts events and reminders from WhatsApp messages and triggers them based on your browsing context.
 
 > *Named after Argus Panoptes, the all-seeing giant of Greek mythology who never slept, always watching and remembering.*
 
-**Current Version**: v0.8.1 (Push Sync + Keyword Matching)
+**Current Version**: v0.9.0 (Chrome Extension + Proactive Architecture)
 
 ---
 
 ## Key Features
 
+- **Chrome Extension** for proactive browser-based reminders (NEW in v0.9.0)
+- **3-Month Hot Data Window** - Events stay queryable for 3 months
+- **Context-Aware Triggers** - Reminders based on travel sites, shopping, etc.
 - Multi-language support (English, Hindi, Tamil, Telugu, Marathi, Bengali, Gujarati)
 - Rule Engine with 70+ static patterns
 - Auto-Learning System that improves over time
@@ -40,6 +43,16 @@
 | Schema Validation | Zod | 3.24.x | Runtime type validation |
 | Logging | Winston | 3.x | Structured logging |
 | WebSocket | ws | 8.x | Real-time communication |
+
+### Chrome Extension (NEW in v0.9.0)
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Manifest | V3 | Chrome extension standard |
+| Background | Service Worker | Site detection, API calls |
+| Content Script | Injected JS | Overlay cards, page context |
+| Popup | HTML/JS | Quick status view |
+| Storage | chrome.storage | Settings sync |
 
 ### AI & Machine Learning
 
@@ -593,7 +606,8 @@ npm test -- --watch
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v0.8.1 | Current | **Push Sync + Keyword Matching** - Push subscriptions sync to RMD, keyword fallback for proactive triggers, Pipeline Live View |
+| v0.9.0 | Current | **Chrome Extension + Proactive Architecture** - Browser context detection, overlay cards, 3-month hot data window, extension API endpoints |
+| v0.8.1 | - | **Push Sync + Keyword Matching** - Push subscriptions sync to RMD, keyword fallback for proactive triggers, Pipeline Live View |
 | v0.8.0 | - | **Proactive Trigger System** - Intelligent context-based reminders via Push, Cron scheduler |
 | v0.7.9 | - | Reminder Classification Fix, UI Event Actions |
 | v0.7.8 | - | Comprehensive LLM Logging, E2E Test Suite, max_tokens Fix |
@@ -621,6 +635,7 @@ npm test -- --watch
 |----------|-------------|
 | `docs/ARCHITECTURE.md` | Detailed Mermaid diagrams |
 | `docs/diagrams/argus-architecture.pdf` | Printable architecture diagram |
+| `extension/README.md` | Chrome extension documentation |
 | `RULES.md` | Development guidelines & constraints |
 | `CHANGELOG.md` | Detailed version history |
 | `aidata/prompt.md` | AI pipeline specification |

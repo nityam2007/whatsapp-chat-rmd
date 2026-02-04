@@ -1,14 +1,17 @@
 /**
- * Proactive Trigger Service
+ * Proactive Trigger Service (v0.9.0 Simplified)
  * 
  * Monitors ALL incoming messages and uses intelligent matching to detect
  * when any message relates to pending events/tasks.
  * 
- * MATCHING STRATEGY (v0.8.1):
- * 1. FAISS vector similarity (fast, cheap) - finds semantically similar events
- * 2. Gemini LLM (smart, expensive) - only for ambiguous cases or low FAISS confidence
+ * MATCHING STRATEGY (v0.9.0 - Simplified 2-Stage):
+ * 1. SQL Context Query (fast, cheap) - uses location, keywords, context tags
+ * 2. Gemini LLM (smart, expensive) - only for ambiguous cases or validation
  * 
- * This is NOT just keyword matching - it's intelligent context understanding.
+ * REMOVED: FAISS vector similarity (was overkill for proactive matching)
+ * ADDED: SQL-based context matching with 3-month hot data window
+ * 
+ * This is intelligent context understanding, not just keyword matching.
  * 
  * Examples of what it can detect:
  * - "Just reached Goa" → triggers "Get cashew from Goa for Priya"
@@ -24,12 +27,14 @@ import {
   markEventProactivelyTriggered,
   resetProactiveTrigger as dbResetProactiveTrigger,
   storePipelineLog,
+  getEventsByContext,
+  ExtensionContextQuery,
+  ContextMatchResult,
 } from '../database/sqlite.js';
 import { sendNotification } from '../notifications/index.js';
 import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
 import OpenAI from 'openai';
-import { generateEmbedding } from '../vector/faiss.js';
 
 // Gemini client
 let geminiClient: OpenAI | null = null;
@@ -47,21 +52,20 @@ function getGeminiClient(): OpenAI {
 export interface ProactiveMatch {
   event: StoredEvent;
   matchReason: string;
-  matchType: 'faiss' | 'intelligent' | 'keyword';
+  matchType: 'sql_context' | 'intelligent' | 'keyword';
   confidence: number;
   suggestedAction?: string;
 }
 
-// FAISS similarity threshold for proactive matching
-const FAISS_HIGH_CONFIDENCE_THRESHOLD = 0.75;  // High enough to trigger directly
-const FAISS_MEDIUM_CONFIDENCE_THRESHOLD = 0.55; // Worth checking with Gemini
-const KEYWORD_MATCH_CONFIDENCE = 0.65; // Confidence for keyword-based matches
+// Confidence thresholds (simplified in v0.9.0)
+const SQL_HIGH_CONFIDENCE_THRESHOLD = 0.80;  // High enough to trigger directly
+const SQL_MEDIUM_CONFIDENCE_THRESHOLD = 0.60; // Worth checking with Gemini
 
 /**
  * Check if an incoming message triggers any pending events
- * Uses FAISS first for speed, then Gemini for ambiguous cases
+ * Uses SQL context matching first, then Gemini for ambiguous cases
  * 
- * This is called for EVERY incoming message
+ * SIMPLIFIED in v0.9.0: Removed FAISS, uses SQL-based matching
  */
 export async function checkForProactiveTriggers(
   message: StoredMessage
@@ -78,161 +82,107 @@ export async function checkForProactiveTriggers(
   }
 
   try {
-    // Get all pending events
-    const pendingEvents = getEventsForProactiveTrigger(100);
-    
-    logger.info('Found pending events for proactive matching', { 
-      messageId: message.id,
-      pendingEventCount: pendingEvents.length,
-      eventTitles: pendingEvents.slice(0, 5).map(e => e.title),
-    });
-
-    if (pendingEvents.length === 0) {
-      logger.debug('No pending events for proactive matching');
-      return [];
-    }
-
     // =============================================
-    // Stage 1: FAISS Vector Similarity (Fast & Cheap)
+    // Stage 1: SQL Context Matching (Fast & Cheap)
+    // Uses getEventsByContext() with 3-month hot data window
     // =============================================
-    const faissMatches = await faissContextMatch(message, pendingEvents);
+    const contextQuery = extractContextFromMessage(message.content);
+    const sqlMatches = getEventsByContext(contextQuery);
     
-    // Log FAISS stage
+    // Convert to ProactiveMatch format
+    const matches: ProactiveMatch[] = sqlMatches.map(m => ({
+      event: m.event,
+      matchReason: `${m.matchType}: ${m.matchedValue}`,
+      matchType: 'sql_context' as const,
+      confidence: m.confidence,
+      suggestedAction: m.event.title || undefined,
+    }));
+    
+    // Log SQL stage
     storePipelineLog({
       message_id: message.id,
-      stage: 'proactive_faiss',
-      status: faissMatches.length > 0 ? 'matches_found' : 'no_matches',
+      stage: 'proactive_sql',
+      status: matches.length > 0 ? 'matches_found' : 'no_matches',
       data: {
-        pendingEventCount: pendingEvents.length,
-        faissMatchCount: faissMatches.length,
-        matches: faissMatches.map(m => ({
+        contextQuery,
+        matchCount: matches.length,
+        matches: matches.map(m => ({
           eventId: m.event.id,
           eventTitle: m.event.title,
           confidence: m.confidence,
+          matchType: m.matchType,
         })),
       },
     });
     
-    // If we have high-confidence FAISS matches, use them directly
-    const highConfidenceFaiss = faissMatches.filter(m => m.confidence >= FAISS_HIGH_CONFIDENCE_THRESHOLD);
+    // High-confidence SQL matches - use directly
+    const highConfidence = matches.filter(m => m.confidence >= SQL_HIGH_CONFIDENCE_THRESHOLD);
     
-    if (highConfidenceFaiss.length > 0) {
-      logger.info('Using high-confidence FAISS matches (skipping Gemini)', {
+    if (highConfidence.length > 0) {
+      logger.info('Using high-confidence SQL matches (skipping Gemini)', {
         messageId: message.id,
-        matchCount: highConfidenceFaiss.length,
+        matchCount: highConfidence.length,
       });
       
-      // Send proactive reminders for matches
-      for (const match of highConfidenceFaiss) {
+      for (const match of highConfidence) {
         await sendProactiveReminder(message, match);
       }
       
-      return highConfidenceFaiss;
+      return highConfidence;
     }
     
     // =============================================
-    // Stage 1.5: Keyword Matching (Fast fallback when FAISS doesn't find matches)
-    // This catches cases like "just reached goa" matching "Get cashew from goa"
+    // Stage 2: Gemini LLM (Smart but Expensive)
+    // Only if SQL found medium-confidence matches OR message looks promising
     // =============================================
-    let keywordMatches: ProactiveMatch[] = [];
-    if (faissMatches.length === 0) {
-      keywordMatches = keywordContextMatch(message, pendingEvents);
+    const mediumConfidence = matches.filter(
+      m => m.confidence >= SQL_MEDIUM_CONFIDENCE_THRESHOLD && m.confidence < SQL_HIGH_CONFIDENCE_THRESHOLD
+    );
+    
+    const mightBeTrigger = checkForTriggerSignals(message.content);
+    const shouldUseGemini = mediumConfidence.length > 0 || 
+                           (mightBeTrigger && matches.length === 0);
+    
+    if (shouldUseGemini && config.geminiApiKey) {
+      // Get pending events for Gemini to analyze
+      const pendingEvents = mediumConfidence.length > 0
+        ? mediumConfidence.map(m => m.event)
+        : getEventsForProactiveTrigger(20);
       
-      storePipelineLog({
-        message_id: message.id,
-        stage: 'proactive_keyword',
-        status: keywordMatches.length > 0 ? 'matches_found' : 'no_matches',
-        data: {
-          pendingEventCount: pendingEvents.length,
-          keywordMatchCount: keywordMatches.length,
-          matches: keywordMatches.map(m => ({
-            eventId: m.event.id,
-            eventTitle: m.event.title,
-            confidence: m.confidence,
-            reason: m.matchReason,
-          })),
-        },
-      });
-      
-      // If we have high-confidence keyword matches, use them
-      const highConfidenceKeyword = keywordMatches.filter(m => m.confidence >= KEYWORD_MATCH_CONFIDENCE);
-      if (highConfidenceKeyword.length > 0) {
-        logger.info('Using high-confidence keyword matches', {
-          messageId: message.id,
-          matchCount: highConfidenceKeyword.length,
+      if (pendingEvents.length > 0) {
+        const geminiMatches = await intelligentContextMatch(message, pendingEvents);
+        
+        storePipelineLog({
+          message_id: message.id,
+          stage: 'proactive_gemini',
+          status: geminiMatches.length > 0 ? 'matches_found' : 'no_matches',
+          data: {
+            eventsChecked: pendingEvents.length,
+            geminiMatchCount: geminiMatches.length,
+            matches: geminiMatches.map(m => ({
+              eventId: m.event.id,
+              eventTitle: m.event.title,
+              confidence: m.confidence,
+              reason: m.matchReason,
+            })),
+          },
         });
         
-        // Send proactive reminders for keyword matches
-        for (const match of highConfidenceKeyword) {
+        for (const match of geminiMatches) {
           await sendProactiveReminder(message, match);
         }
         
-        return highConfidenceKeyword;
+        if (geminiMatches.length > 0) {
+          logger.info('Proactive triggers found via Gemini', {
+            messageId: message.id,
+            matchCount: geminiMatches.length,
+          });
+        }
+        
+        return geminiMatches;
       }
     }
-
-    // =============================================
-    // Stage 2: Gemini LLM (Smart but Expensive)
-    // Only if FAISS found medium-confidence matches OR no matches but message seems promising
-    // =============================================
-    const mediumConfidenceFaiss = faissMatches.filter(
-      m => m.confidence >= FAISS_MEDIUM_CONFIDENCE_THRESHOLD && m.confidence < FAISS_HIGH_CONFIDENCE_THRESHOLD
-    );
     
-    // Also consider keyword matches that didn't meet the high threshold
-    const mediumConfidenceKeyword = keywordMatches.filter(m => m.confidence >= 0.5 && m.confidence < KEYWORD_MATCH_CONFIDENCE);
-    
-    // Check if message content suggests it might be a trigger (location, status, completion)
-    const mightBeTrigger = checkForTriggerSignals(message.content);
-    
-    // Only use Gemini if:
-    // 1. We have medium-confidence FAISS or keyword matches to validate, OR
-    // 2. Message looks like a trigger but nothing found high matches
-    const shouldUseGemini = mediumConfidenceFaiss.length > 0 || 
-                           mediumConfidenceKeyword.length > 0 ||
-                           (mightBeTrigger && faissMatches.length === 0 && keywordMatches.length === 0);
-    
-    if (shouldUseGemini && config.geminiApiKey) {
-      // Pass medium-confidence events to Gemini for validation
-      const eventsToCheck = mediumConfidenceFaiss.length > 0 
-        ? mediumConfidenceFaiss.map(m => m.event)
-        : pendingEvents.slice(0, 20); // Limit to top 20 for cost
-      
-      const geminiMatches = await intelligentContextMatch(message, eventsToCheck);
-      
-      // Log Gemini stage
-      storePipelineLog({
-        message_id: message.id,
-        stage: 'proactive_gemini',
-        status: geminiMatches.length > 0 ? 'matches_found' : 'no_matches',
-        data: {
-          eventsChecked: eventsToCheck.length,
-          geminiMatchCount: geminiMatches.length,
-          matches: geminiMatches.map(m => ({
-            eventId: m.event.id,
-            eventTitle: m.event.title,
-            confidence: m.confidence,
-            reason: m.matchReason,
-          })),
-        },
-      });
-      
-      // Send proactive reminders for matches
-      for (const match of geminiMatches) {
-        await sendProactiveReminder(message, match);
-      }
-      
-      if (geminiMatches.length > 0) {
-        logger.info('Proactive triggers found via Gemini', {
-          messageId: message.id,
-          matchCount: geminiMatches.length,
-        });
-      }
-      
-      return geminiMatches;
-    }
-    
-    // No matches found
     return [];
   } catch (error) {
     logger.error('Error checking proactive triggers', { error, messageId: message.id });
@@ -241,200 +191,42 @@ export async function checkForProactiveTriggers(
 }
 
 /**
- * FAISS-based context matching (fast & cheap)
- * Uses vector similarity to find semantically related pending events
+ * Extract context (keywords, location) from message content
+ * Used for SQL-based matching
  */
-async function faissContextMatch(
-  message: StoredMessage,
-  pendingEvents: StoredEvent[]
-): Promise<ProactiveMatch[]> {
-  logger.info('FAISS context matching started', {
-    messageId: message.id,
-    messageContent: message.content.slice(0, 50),
-    pendingEventCount: pendingEvents.length,
-  });
-
-  try {
-    // Generate embedding for the incoming message
-    const messageEmbedding = await generateEmbedding(message.content);
-    
-    logger.debug('Message embedding generated', { 
-      messageId: message.id, 
-      embeddingLength: messageEmbedding.length,
-    });
-    
-    const matches: ProactiveMatch[] = [];
-    
-    // Compare with each pending event's context
-    for (const event of pendingEvents) {
-      // Build event context for embedding
-      const eventContext = [
-        event.title || '',
-        event.source_message_content || '',
-        event.location || '',
-        (event.context_tags || []).join(' '),
-        (event.trigger_keywords || []).join(' '),
-        event.condition_value || '',
-      ].filter(Boolean).join(' ');
-      
-      if (!eventContext.trim()) continue;
-      
-      try {
-        // Generate embedding for event context
-        const eventEmbedding = await generateEmbedding(eventContext);
-        
-        // Calculate cosine similarity
-        const similarity = cosineSimilarity(messageEmbedding, eventEmbedding);
-        
-        logger.debug('FAISS similarity calculated', {
-          messageId: message.id,
-          eventId: event.id,
-          eventTitle: event.title,
-          similarity: similarity.toFixed(3),
-          threshold: FAISS_MEDIUM_CONFIDENCE_THRESHOLD,
-          passed: similarity >= FAISS_MEDIUM_CONFIDENCE_THRESHOLD,
-        });
-        
-        if (similarity >= FAISS_MEDIUM_CONFIDENCE_THRESHOLD) {
-          matches.push({
-            event,
-            matchReason: `Semantic similarity: ${(similarity * 100).toFixed(0)}%`,
-            matchType: 'faiss',
-            confidence: similarity,
-            suggestedAction: event.title || undefined,
-          });
-        }
-      } catch (embedError) {
-        logger.debug('Failed to generate embedding for event', { 
-          eventId: event.id, 
-          error: embedError 
-        });
-      }
-    }
-    
-    // Sort by confidence
-    matches.sort((a, b) => b.confidence - a.confidence);
-    
-    logger.debug('FAISS context matching completed', {
-      messageId: message.id,
-      pendingEventCount: pendingEvents.length,
-      matchCount: matches.length,
-      topMatch: matches[0] ? {
-        eventTitle: matches[0].event.title,
-        confidence: matches[0].confidence,
-      } : null,
-    });
-    
-    return matches;
-  } catch (error) {
-    logger.error('FAISS context matching failed', { error, messageId: message.id });
-    return [];
-  }
-}
-
-/**
- * Calculate cosine similarity between two embedding vectors
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
+function extractContextFromMessage(content: string): ExtensionContextQuery {
+  const keywords = extractSignificantWords(content.toLowerCase());
   
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
+  // Try to detect location from common patterns
+  const locationPatterns = [
+    /\b(?:reached|arrived|at|in|visiting|landed|going to|heading to|came to)\s+(\w+)/i,
+    /\b(?:goa|mumbai|delhi|bangalore|chennai|kolkata|hyderabad|pune|jaipur|ahmedabad)\b/i,
+  ];
   
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denominator === 0) return 0;
-  
-  return dotProduct / denominator;
-}
-
-/**
- * Keyword-based matching fallback
- * Checks if message content contains keywords from event context
- * This works even without proper embeddings
- */
-function keywordContextMatch(
-  message: StoredMessage,
-  pendingEvents: StoredEvent[]
-): ProactiveMatch[] {
-  const messageWords = extractSignificantWords(message.content.toLowerCase());
-  const matches: ProactiveMatch[] = [];
-  
-  logger.debug('Keyword matching started', {
-    messageId: message.id,
-    messageWords,
-  });
-  
-  for (const event of pendingEvents) {
-    // Extract keywords from event
-    const eventKeywords = new Set<string>();
-    
-    // Add location as keyword
-    if (event.location) {
-      extractSignificantWords(event.location.toLowerCase()).forEach(w => eventKeywords.add(w));
-    }
-    
-    // Add trigger keywords
-    if (event.trigger_keywords) {
-      event.trigger_keywords.forEach(kw => {
-        extractSignificantWords(kw.toLowerCase()).forEach(w => eventKeywords.add(w));
-      });
-    }
-    
-    // Add context tags
-    if (event.context_tags) {
-      event.context_tags.forEach(tag => {
-        if (tag.length >= 3) eventKeywords.add(tag.toLowerCase());
-      });
-    }
-    
-    // Add significant words from title
-    if (event.title) {
-      extractSignificantWords(event.title.toLowerCase()).forEach(w => eventKeywords.add(w));
-    }
-    
-    // Check for keyword overlap
-    const matchedKeywords = messageWords.filter(w => eventKeywords.has(w));
-    
-    if (matchedKeywords.length > 0) {
-      // Check if message indicates arrival/location/status
-      const isLocationTrigger = /\b(reached|arrived|at|in|visiting|landed|came|going|heading)\b/i.test(message.content);
-      
-      // Calculate confidence based on match quality
-      const confidence = isLocationTrigger && matchedKeywords.length > 0 
-        ? KEYWORD_MATCH_CONFIDENCE + (matchedKeywords.length * 0.05)
-        : 0.5 + (matchedKeywords.length * 0.1);
-      
-      logger.info('Keyword match found', {
-        messageId: message.id,
-        eventId: event.id,
-        eventTitle: event.title,
-        matchedKeywords,
-        eventKeywords: Array.from(eventKeywords),
-        isLocationTrigger,
-        confidence,
-      });
-      
-      matches.push({
-        event,
-        matchReason: `Keyword match: ${matchedKeywords.join(', ')}${isLocationTrigger ? ' (location trigger)' : ''}`,
-        matchType: 'keyword',
-        confidence: Math.min(confidence, 0.9),
-        suggestedAction: event.title || undefined,
-      });
+  let location: string | undefined;
+  for (const pattern of locationPatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      location = match[1] || match[0];
+      break;
     }
   }
   
-  // Sort by confidence
-  matches.sort((a, b) => b.confidence - a.confidence);
+  // Detect activity type
+  let activity: string | undefined;
+  if (/\b(travel|trip|flight|hotel|booking|vacation)\b/i.test(content)) {
+    activity = 'travel';
+  } else if (/\b(buy|purchase|order|amazon|flipkart|shopping)\b/i.test(content)) {
+    activity = 'shopping';
+  } else if (/\b(pay|payment|bank|transfer|upi)\b/i.test(content)) {
+    activity = 'banking';
+  }
   
-  return matches;
+  return {
+    keywords: keywords.slice(0, 10), // Limit keywords
+    location,
+    activity,
+  };
 }
 
 /**

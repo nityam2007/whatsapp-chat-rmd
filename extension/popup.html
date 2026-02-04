@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Argus</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 380px;
+      min-height: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #ffffff;
+    }
+    
+    .header {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .logo {
+      font-size: 24px;
+      margin-right: 10px;
+    }
+    
+    .title {
+      flex: 1;
+    }
+    
+    .title h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .title span {
+      font-size: 11px;
+      color: #a0aec0;
+    }
+    
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    
+    .status-connected {
+      background: #38a169;
+    }
+    
+    .status-disconnected {
+      background: #e53e3e;
+    }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      padding: 16px;
+    }
+    
+    .stat-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #90cdf4;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      color: #a0aec0;
+      margin-top: 4px;
+    }
+    
+    .section-title {
+      padding: 12px 16px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #a0aec0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .events-list {
+      padding: 0 16px 16px;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+    
+    .event-item {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .event-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .event-title {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    
+    .event-meta {
+      display: flex;
+      gap: 8px;
+      font-size: 11px;
+      color: #a0aec0;
+    }
+    
+    .event-location {
+      color: #90cdf4;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #a0aec0;
+    }
+    
+    .empty-state .icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+    
+    .footer {
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .footer a {
+      color: #90cdf4;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    
+    .footer a:hover {
+      text-decoration: underline;
+    }
+    
+    .refresh-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: #ffffff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .refresh-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #a0aec0;
+    }
+    
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top: 3px solid #90cdf4;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="logo">👁️</span>
+    <div class="title">
+      <h1>Argus</h1>
+      <span>Proactive Memory Assistant</span>
+    </div>
+    <span class="status-badge" id="status-badge">...</span>
+  </div>
+  
+  <div class="stats" id="stats">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-hot">-</div>
+      <div class="stat-label">Hot Events</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-location">-</div>
+      <div class="stat-label">With Location</div>
+    </div>
+  </div>
+  
+  <div class="section-title">Recent Events</div>
+  
+  <div class="events-list" id="events-list">
+    <div class="loading">
+      <div class="spinner"></div>
+      <div>Loading events...</div>
+    </div>
+  </div>
+  
+  <div class="footer">
+    <a href="options.html" target="_blank">⚙️ Settings</a>
+    <button class="refresh-btn" id="refresh-btn">🔄 Refresh</button>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
